@@ -153,7 +153,7 @@ lemma im_ft_subset (t : ℝ) : (f (v := v) t) '' unitSphere ⊆ Metric.sphere 0 
 
 /-
 TODO : f t induit f_restr t : unitSphere → Metric.sphere 0 (Real.sqrt (1 + t*t))
-qui est toujours continue
+qui est toujours ouverte
 -/
 
 lemma rank_EuclideanSpace : FiniteDimensional.finrank ℝ (EuclideanSpace ℝ (Fin (n+1))) = n+1 := by

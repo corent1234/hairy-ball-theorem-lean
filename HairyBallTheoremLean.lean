@@ -80,7 +80,7 @@ lemma Diff_ft : ∀ t : ℝ, Differentiable ℝ (f t) := by
 
 /- différentielle de f t en x -/
 local notation "f'" =>
-  fun (t : ℝ) (x : EuclideanSpace ℝ (Fin (n+1))) ↦ (ContinuousLinearMap.id ℝ (E n)) + (t • (fderiv ℝ v x))
+  fun (t : ℝ) (x : E n) ↦ (ContinuousLinearMap.id ℝ (E n)) + (t • (fderiv ℝ v x))
 /- noncomputable def f' (t : ℝ) (x : E n) :=
   (ContinuousLinearMap.id ℝ _) + (t • (fderiv ℝ v x)) -/
 
@@ -98,48 +98,51 @@ open MeasureTheory
 lemma meas_A : MeasurableSet A := by
   sorry
 
-lemma integral_abs_det_ft : ∀ᶠ t in 𝓝 0,
-  (∫⁻ x in A, ENNReal.ofReal |(f' t x).det| ∂volume) = volume ((f t) '' A) := by
-  sorry
-  /- let ⟨ε, hε, h⟩ := @InjOn_A_ft n v A
-  filter_upwards [Metric.ball_mem_nhds 0 hε] -/
-  /- use ε
-  constructor
-  · exact hε
-  · intro t ht
-    exact lintegral_abs_det_fderiv_eq_addHaar_image volume meas_A (ftDeriv t) (h t ht)
- -/
+lemma integral_abs_det_f't : ∀ᶠ t in 𝓝 0,
+    (∫⁻ x in A, ENNReal.ofReal |(f' t x).det| ∂volume) = volume ((f t) '' A) := by
+  filter_upwards [@InjOn_A_ft n v A] with t hinj
+  exact lintegral_abs_det_fderiv_eq_addHaar_image volume (meas_A n) (ftDeriv n t) hinj
 
 /- LinearMap.toMatrix : ça devrait aller
 + det commute avec les morphismes d'algebre -/
 /- det (f' t x) est polynomial en t et les coefficients sont continus en x -/
-lemma f't_det_poly : ∃ P : E n → Polynomial ℝ, ∀ x : E n,
-  (P x).coeff 0 = 1
-  ∧ ∀ t : ℝ, (f' t x).det = (P x).toContinuousMap t
-  ∧ ∀ k : ℕ, Continuous (fun x => (P x).coeff k) := by
+lemma f't_det_poly : ∃ P : E n → Polynomial ℝ,
+    (∀ x : E n, (P x).coeff 0 = 1)
+    ∧ (∀ t : ℝ, ∀ x : E n, (f' t x).det = (P x).eval t)
+    ∧ ∀ k : ℕ, Continuous (fun x => (P x).coeff k) := by
   sorry
 
-/- eventually_gt_of_tendsto_gt + "continuous_tendsto"
-  ou ContinuousAt.enventually_lt -/
 /- si P 0 = 1 alors P t > 0 pour t assez petit -/
-lemma zero_lt_poly (P : Polynomial ℝ) (h0 : P.coeff 0 = 1) : ∀ᶠ t in 𝓝 0, P.toContinuousMap t > 0 := by
-  sorry
+lemma zero_lt_poly (P : Polynomial ℝ) (h0 : P.coeff 0 = 1) : ∀ᶠ t in 𝓝 0, 0 < P.eval t := by
+  apply eventually_gt_of_tendsto_gt (by linarith) (P.toContinuousMap.continuous_toFun.tendsto' _ _ _)
+  simp [P.coeff_zero_eq_eval_zero]
 
 /- det (f' t x) > 0 pour t assez petit -/
-lemma zero_lt_det_f't (x : EuclideanSpace ℝ (Fin (n+1))) : ∀ᶠ t in 𝓝 0, (f' t x).det > 0 := by
+lemma zero_lt_det_f't : ∀ᶠ t in 𝓝 0, ∀ x ∈ A, 0 < (f' t x).det := by
+  have ⟨P, hP⟩ := @f't_det_poly n v
+  /- filter_upwards [zero_lt_poly (P x) (hP x).1] with t
+  simp [(hP x).2.1 t] -/
   sorry
 
 /- |det (f' t x)| est polynomial en t et les coefficients sont continus en x -/
-lemma abs_f'_det_poly : ∃ P : E n → Polynomial ℝ, ∀ x : E n,
-  ∀ t : ℝ, |(f' t x).det| = (P x).toContinuousMap t
-  ∧ ∀ k : ℕ, Continuous (fun x => (P x).coeff k) := by
-  sorry
+lemma abs_f'_det_poly : ∃ P : E n → Polynomial ℝ,
+    (∀ᶠ t in 𝓝 0, ∀ x ∈ A, |(f' t x).det| = (P x).eval t)
+    ∧ ∀ k : ℕ, Continuous (fun x => (P x).coeff k) := by
+  have ⟨P, hP⟩ := @f't_det_poly n v
+  refine' ⟨P, _, hP.2.2⟩
+  filter_upwards [zero_lt_det_f't n] with t hpos x xA
+  rw [abs_of_pos (hpos x xA), hP.2.1 t]
 
 /- ecrire le polynome comme somme finie -/
 /- le volume de (f t)''(A) est polynomial en t -/
-lemma vol_ft_A_poly : ∃ ε > 0, ∃ P : Polynomial ℝ, ∀ t : ℝ, |t| < ε →
-  volume ((f t) '' A) = ENNReal.ofReal (P.toContinuousMap t) := by
+lemma vol_ft_A_poly : ∃ P : Polynomial ℝ, ∀ᶠ t in 𝓝 0,
+    volume ((f t) '' A) = ENNReal.ofReal (P.eval t) := by
   sorry
+  /- have ⟨P, hP⟩ := @abs_f'_det_poly n v
+  refine' ⟨_, _⟩
+  · sorry
+  · filter_upwards [integral_abs_det_f't n] with t h
+    rw [← h] -/
 
 /- LinearMap.equivOfDetNeZero, toContinuousLinearEquiv -/
 /- f' t est une equivalence linéaire si t est assez petit -/
@@ -161,7 +164,7 @@ lemma im_ft_subset (t : ℝ) : (f t) '' (unitSphere n) ⊆ Metric.sphere 0 (Real
   simp
   unfold unitSphere at xUnit
   have : ‖x‖ = 1 := by simp at xUnit; assumption
-  rw [← Real.sqrt_mul_self (norm_nonneg _), norm_add_sq_eq_norm_sq_add_norm_sq_real (inner_self_v_eq_zero t x)]
+  rw [← Real.sqrt_mul_self (norm_nonneg _), norm_add_sq_eq_norm_sq_add_norm_sq_real (inner_self_v_eq_zero n t x)]
   rw [this, norm_smul, vUnit x, this]
   simp
 
@@ -173,9 +176,14 @@ lemma one_lt_rank_EuclideanSpace : 1 < Module.rank ℝ (E n) := by
   rw [rank_EuclideanSpace]
   linarith
 
+local notation "f_restr" => fun (t : ℝ) ↦ Set.restrictPreimage (Metric.sphere 0 (Real.sqrt (1 + t*t))) (f t)
+
+lemma ft_preimage (t : ℝ) : (f t) ⁻¹' (Metric.sphere 0 (Real.sqrt (1 + t*t))) = unitSphere n := by
+  sorry
+
 /- Mq f(unitSphere) = f(E) ∩ Metric.sphere 0 (Real.sqrt (1 + t*t)) puis OK -/
 /- f t est ouverte pour t assez petit (théorème d'inversion globale) -/
-lemma ft_open : ∀ᶠ t in 𝓝 0, IsOpenMap (f t) := by
+lemma ft_open : ∀ᶠ t in 𝓝 0, IsOpenMap (f_restr t) := by
   sorry
 /-  let ⟨ε, εpos, h⟩ := @ftStrictDeriv n v /- ??? -/
   use ε
@@ -187,10 +195,13 @@ lemma ft_open : ∀ᶠ t in 𝓝 0, IsOpenMap (f t) := by
 lemma connected_sphere (t : ℝ) : IsConnected (Metric.sphere (0 : E n) (Real.sqrt (1 + t*t))) :=
   isConnected_sphere (one_lt_rank_EuclideanSpace n n_pos) 0 (Real.sqrt_nonneg (1 + t*t))
 
-lemma im_ft_open : ∃ ε > 0, ∀ t : ℝ, |t| < ε → IsOpen ((f t) '' (unitSphere n)) := by
+lemma im_ft_open : ∀ᶠ t in 𝓝 0, IsOpen ((f t) '' (unitSphere n)) := by
   sorry
 
-lemma im_ft : ∃ ε > 0, ∀ t : ℝ, |t| < ε →
+lemma im_ft_closed : ∀ᶠ t in 𝓝 0, IsClosed ((f t) '' (unitSphere n)) := by
+  sorry
+
+lemma im_ft : ∀ᶠ t in 𝓝 0,
   (f t) '' (unitSphere n) = Metric.sphere 0 (Real.sqrt (1 + t*t)) := by
   sorry
 

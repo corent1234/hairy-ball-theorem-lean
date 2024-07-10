@@ -31,7 +31,10 @@ section
 variable (v : E n → E n) (hv : IsVectorFieldOnSn n v)
   {vContDiff : ContDiff ℝ 1 v}
   {vUnit : ∀ x : EuclideanSpace ℝ (Fin (n+1)), ‖v x‖ = ‖x‖}
-  {A : Set (EuclideanSpace ℝ (Fin (n+1)))} [CompactSpace A]
+  {A : Set (EuclideanSpace ℝ (Fin (n+1)))} (AComp : IsCompact A)
+
+instance instComp : CompactSpace (A : Type) :=
+  isCompact_iff_compactSpace.1 AComp
 
 local notation "f" => fun (t : ℝ) (x : EuclideanSpace ℝ (Fin (n+1))) ↦ x + t • (v x)
 
@@ -103,46 +106,109 @@ lemma integral_abs_det_f't : ∀ᶠ t in 𝓝 0,
   filter_upwards [@InjOn_A_ft n v A] with t hinj
   exact lintegral_abs_det_fderiv_eq_addHaar_image volume (meas_A n) (ftDeriv n t) hinj
 
+open Polynomial
+
 /- LinearMap.toMatrix : ça devrait aller
 + det commute avec les morphismes d'algebre -/
 /- det (f' t x) est polynomial en t et les coefficients sont continus en x -/
 lemma f't_det_poly : ∃ P : E n → Polynomial ℝ,
-    (∀ x : E n, (P x).coeff 0 = 1)
+    (∀ x : E n, (P x).natDegree ≤ n)
+    ∧ (∀ x : E n, (P x).coeff 0 = 1)
     ∧ (∀ t : ℝ, ∀ x : E n, (f' t x).det = (P x).eval t)
     ∧ ∀ k : ℕ, Continuous (fun x => (P x).coeff k) := by
   sorry
 
+lemma zero_lt_continuous (g : ℝ → ℝ) (hg : Continuous g) (h0 : g 0 = 1) : ∀ᶠ t in 𝓝 0, 0 < g t :=
+  eventually_gt_of_tendsto_gt (by linarith) (hg.tendsto' _ _ rfl)
+
 /- si P 0 = 1 alors P t > 0 pour t assez petit -/
 lemma zero_lt_poly (P : Polynomial ℝ) (h0 : P.coeff 0 = 1) : ∀ᶠ t in 𝓝 0, 0 < P.eval t := by
-  apply eventually_gt_of_tendsto_gt (by linarith) (P.toContinuousMap.continuous_toFun.tendsto' _ _ _)
-  simp [P.coeff_zero_eq_eval_zero]
+  apply zero_lt_continuous P.toContinuousMap P.toContinuousMap.continuous
+  simpa [← P.coeff_zero_eq_eval_zero]
+
+lemma continuous_bound (M : ℝ) :
+    Continuous (fun t => 1 - M * Finset.sum (Finset.range n) fun k => |t| ^ (k + 1)) :=
+  continuous_const.sub ((continuous_mul_left M).comp
+    (continuous_finset_sum _ (fun _ _ => (continuous_pow _).comp continuous_abs)))
+
+lemma pos_bound (M : ℝ) : ∀ᶠ t in 𝓝 0,
+    0 < 1 - M * Finset.sum (Finset.range n) fun k => |t| ^ (k + 1) := by
+  apply zero_lt_continuous _ (continuous_bound n M)
+  simp
+
+lemma range_bounded (ι : ℕ → ℝ) (m : ℕ) (hm : m > 0) (hι : ι 0 > 0) :
+    ∃ M > 0, ∀ k ∈ Finset.range m, ι k ≤ M :=
+  ⟨((Finset.range m).image ι).max' ((Finset.nonempty_range_iff.2 (by linarith)).image ι),
+    by linarith [((Finset.range m).image ι).le_max' (ι 0) (Finset.mem_image_of_mem ι (Finset.mem_range.2 (by linarith)))],
+    fun _ hk => Finset.le_max' _ _ (Finset.mem_image_of_mem ι hk)⟩
+
+lemma unif_bounded_range_of_bounded {α : Type} (ι : ℕ → α → ℝ) (h : ∀ k, ∃ M, ∀ x, |ι k x| ≤ M) (m : ℕ) :
+    ∃ M, ∀ k ∈ Finset.range m, ∀ x, |ι k x| ≤ M := by
+  induction' m with m hm
+  · simp
+  · let ⟨M₀, hM₀⟩ := hm
+    let ⟨M, hM⟩ := h m
+    use max M M₀
+    simp
+    intro k k_le_m x
+    by_cases hk : k = m
+    · rw [hk]
+      exact Or.inl (hM x)
+    · exact Or.inr (hM₀ k (Finset.mem_range.2 (lt_of_le_of_ne (Nat.le_of_lt_succ k_le_m) hk)) x)
+
+lemma useless_lemma (g : ℕ → ℝ) (n : ℕ) :
+    Finset.sum (Finset.range (n + 1)) g = Finset.sum (Finset.range (1 + n)) g := by
+  rw [add_comm]
+
+lemma bound_poly (P : E n → Polynomial ℝ) (hdeg : ∀ x, (P x).natDegree ≤ n)
+    (h0 : ∀ x, (P x).coeff 0 = 1) (hcont : ∀ k, Continuous (fun x => (P x).coeff k)) :
+    ∃ M, ∀ t : ℝ, ∀ x : A,
+    1 - M * (Finset.sum (Finset.range n) fun k => |t| ^ (k + 1)) ≤ (P x).eval t := by
+  let continuous_coeff (k : ℕ) : C(A,ℝ) := ContinuousMap.restrict A ⟨_, hcont k⟩
+  let bounded_continuous_coeff (k : ℕ) := @BoundedContinuousFunction.mkOfCompact A ℝ _ _ (instComp n AComp) (continuous_coeff k)
+  have : ∀ k, ∃ M, ∀ x : A, |(P x).coeff k| ≤ M :=
+    fun k => ⟨‖bounded_continuous_coeff k‖, fun x => ((bounded_continuous_coeff k).norm_coe_le_norm x)⟩
+  let ⟨M, hM⟩ := unif_bounded_range_of_bounded (fun k (x : A) => (P x).coeff k) this (m := n + 1)
+  have : ∀ t, ∀ x : A, ∀ k ∈ Finset.range n, - M * |t| ^ (k + 1) ≤ ((P x).coeff (1 + k)) * t ^ (1 + k) := by
+    refine fun t x k hk => le_trans ?_ (neg_abs_le _)
+    simp [abs_mul, abs_pow, add_comm]
+    by_cases h₀ : t = 0
+    · simp [h₀]
+    · exact (mul_le_mul_right (pow_pos (abs_pos.2 h₀) _)).2 (hM (k + 1) (Finset.mem_range_succ_iff.2 (by linarith [Finset.mem_range.1 hk])) x)
+  use M
+  intro t x
+  rw [(P x).eval_eq_sum_range' (lt_of_le_of_lt (hdeg x) (lt_add_one n)),
+    useless_lemma, Finset.sum_range_add, Finset.sum_range_one, h0 x,
+    pow_zero, mul_one, sub_eq_neg_add, ←neg_mul, Finset.mul_sum, add_comm]
+  exact add_le_add_left (Finset.sum_le_sum (this t x)) _
 
 /- det (f' t x) > 0 pour t assez petit -/
-lemma zero_lt_det_f't : ∀ᶠ t in 𝓝 0, ∀ x ∈ A, 0 < (f' t x).det := by
+lemma zero_lt_det_f't : ∀ᶠ t in 𝓝 0, ∀ x : A, 0 < (f' t x).det := by
   have ⟨P, hP⟩ := @f't_det_poly n v
-  /- filter_upwards [zero_lt_poly (P x) (hP x).1] with t
-  simp [(hP x).2.1 t] -/
-  sorry
+  have ⟨M, hM⟩ := bound_poly n AComp P hP.1 hP.2.1 hP.2.2.2
+  filter_upwards [pos_bound n M] with t ht x
+  rw [hP.2.2.1 t x]
+  exact lt_of_lt_of_le ht (hM t x)
 
 /- |det (f' t x)| est polynomial en t et les coefficients sont continus en x -/
 lemma abs_f'_det_poly : ∃ P : E n → Polynomial ℝ,
-    (∀ᶠ t in 𝓝 0, ∀ x ∈ A, |(f' t x).det| = (P x).eval t)
+    (∀ᶠ t in 𝓝 0, ∀ x : A, |(f' t x).det| = (P x).eval t)
     ∧ ∀ k : ℕ, Continuous (fun x => (P x).coeff k) := by
   have ⟨P, hP⟩ := @f't_det_poly n v
-  refine' ⟨P, _, hP.2.2⟩
-  filter_upwards [zero_lt_det_f't n] with t hpos x xA
-  rw [abs_of_pos (hpos x xA), hP.2.1 t]
+  refine' ⟨P, _, hP.2.2.2⟩
+  filter_upwards [zero_lt_det_f't n AComp] with t hpos x
+  rw [abs_of_pos (hpos x), hP.2.2.1 t]
 
 /- ecrire le polynome comme somme finie -/
 /- le volume de (f t)''(A) est polynomial en t -/
 lemma vol_ft_A_poly : ∃ P : Polynomial ℝ, ∀ᶠ t in 𝓝 0,
     volume ((f t) '' A) = ENNReal.ofReal (P.eval t) := by
+  have ⟨P, hP⟩ := @abs_f'_det_poly n v A AComp
+  let Q : Polynomial ℝ := Finset.sum (Finset.range n) (fun i => C (∫⁻ x in A, ENNReal.ofReal ((P x).coeff i) ∂volume).toReal * X ^ i)
+  use Q
+  filter_upwards [@integral_abs_det_f't n v A, hP.1] with t hInt hP1
+  rw [← hInt]
   sorry
-  /- have ⟨P, hP⟩ := @abs_f'_det_poly n v
-  refine' ⟨_, _⟩
-  · sorry
-  · filter_upwards [integral_abs_det_f't n] with t h
-    rw [← h] -/
 
 /- LinearMap.equivOfDetNeZero, toContinuousLinearEquiv -/
 /- f' t est une equivalence linéaire si t est assez petit -/

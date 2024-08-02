@@ -211,31 +211,34 @@ lemma abs_det_f't_poly : ∃ P : E n → Polynomial ℝ,
   filter_upwards [zero_lt_det_f't n AComp] with t hpos x
   rw [abs_of_pos (hpos x), hP.2.2.1 t]
 
-lemma cont_abs_det_f't (t : ℝ) : Continuous (fun x => |(f' t x).det|) := by
-  sorry
+lemma cont_abs_det_f't (t : ℝ) : Continuous (fun x => |(f' t x).det|) :=
+  continuous_abs.comp (ContinuousLinearMap.continuous_det.comp (continuous_const.add
+    (continuous_const.smul (vContDiff.continuous_fderiv (by rfl)))))
 
-lemma nonneg_ae_abs_det_f't (t : ℝ) : 0 ≤ᵐ[volume.restrict A] fun x => |(f' t x).det| :=
-  sorry
+lemma nonneg_ae_abs_det_f't (t : ℝ) : 0 ≤ᵐ[volume.restrict A] fun x => |(f' t x).det| := by
+  filter_upwards
+  simp
 
-/- ecrire le polynome comme somme finie -/
 /- le volume de (f t)''(A) est polynomial en t -/
 lemma vol_ft_A_poly : ∃ P : Polynomial ℝ, ∀ᶠ t in 𝓝 0,
     (volume ((f t) '' A)).toReal = (P.eval t) := by
   let ⟨P, hP⟩ := @abs_det_f't_poly n v A AComp
   use (range (n + 1)).sum (fun i => C (∫ x in A, (P x).coeff i ∂volume) * X ^ i)
   filter_upwards [@lintegral_abs_det_f't n v A AComp, hP.2.1] with t hInt hP1
-  have meas_coeff : ∀ k ∈ range n, Measurable fun x => ENNReal.ofReal ((P x).coeff k * t ^ k) :=
-    fun k _ => ENNReal.measurable_ofReal.comp ((hP.2.2.2 k).mul measurable_const)
   simp [← hInt, eval_finset_sum,
-    ← integral_eq_lintegral_of_nonneg_ae (nonneg_ae_abs_det_f't n t) (cont_abs_det_f't n t).aestronglyMeasurable]
+    ← integral_eq_lintegral_of_nonneg_ae (nonneg_ae_abs_det_f't n t) (@cont_abs_det_f't n v vContDiff t).aestronglyMeasurable]
   have : A.EqOn (fun x => |(f' t x).det|) (fun x => (range (n + 1)).sum (fun n => (P x).coeff n * t ^ n)) := by
-    sorry
-  rw [set_integral_congr (meas_A n AComp) this]
+    intro x xA
+    simp [hP1 ⟨x, xA⟩]
+    nth_rw 1 [(P x).as_sum_range' (n + 1) (Nat.lt_succ_of_le (hP.1 x))]
+    simp [eval_finset_sum]
   have integrable_coeff (i : ℕ) : Integrable (fun x => (P x).coeff i * t ^ i) (volume.restrict A) :=
-    sorry
-  rw [integral_finset_sum _ (fun i _ => integrable_coeff i)]
-  have : (fun i => ∫ x in A, (P x).coeff i * t ^ i) = (fun i => (∫ x in A, (P x).coeff i) * t ^ i) :=
-    sorry
+    ContinuousOn.integrableOn_compact AComp (Continuous.continuousOn ((hP.2.2.1 i).smul continuous_const))
+  rw [set_integral_congr (meas_A n AComp) this, integral_finset_sum _ (fun i _ => integrable_coeff i)]
+  have : (fun i => ∫ x in A, (P x).coeff i * t ^ i) = (fun i => (∫ x in A, (P x).coeff i) * t ^ i) := by
+    ext i
+    show ∫ x in A, (P x).coeff i • t ^ i = (∫ x in A, (P x).coeff i) • t ^ i
+    rw [integral_smul_const]
   rw [this]
 
 /- LinearMap.equivOfDetNeZero, toContinuousLinearEquiv -/

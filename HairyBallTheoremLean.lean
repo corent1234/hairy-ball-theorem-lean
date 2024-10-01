@@ -1,17 +1,18 @@
 import Mathlib.Topology.MetricSpace.PseudoMetric
 import Mathlib.Topology.Basic
+import Mathlib.Topology.Category.CompHaus.Basic
+import Mathlib.Topology.ContinuousFunction.Polynomial
 import Mathlib.Analysis.InnerProductSpace.PiL2
+import Mathlib.Analysis.InnerProductSpace.EuclideanDist
 import Mathlib.Analysis.Calculus.ContDiff.Defs
 import Mathlib.Analysis.Calculus.ContDiff.RCLike
 import Mathlib.Analysis.Calculus.FDeriv.Add
-import Mathlib.Topology.Category.CompHaus.Basic
+import Mathlib.Analysis.Calculus.InverseFunctionTheorem.FDeriv
+import Mathlib.Analysis.NormedSpace.Connected
 import Mathlib.MeasureTheory.Measure.Lebesgue.Basic
 import Mathlib.MeasureTheory.Integral.Lebesgue
-import Mathlib.Topology.ContinuousFunction.Polynomial
 import Mathlib.MeasureTheory.Function.Jacobian
-import Mathlib.Analysis.NormedSpace.Connected
 import Mathlib.LinearAlgebra.Dimension.Finrank
-import Mathlib.Analysis.Calculus.InverseFunctionTheorem.FDeriv
 -- import Mathlib.Algebra.BigOperators.Group.Finset
 
 set_option autoImplicit false
@@ -23,16 +24,20 @@ variable (n : ℕ) (n_pos : 0 < n)
 abbrev E := EuclideanSpace ℝ (Fin n)
 abbrev unitSphere := Metric.sphere (0 : E n) 1
 
+lemma mem_unitSphere_iff_norm_one (x : E n) : x ∈ unitSphere n ↔ ‖x‖ = 1 := by
+  rw [mem_sphere_iff_norm, sub_zero]
+
 /- structure ?-/
-structure IsVectorFieldOnSn (v : E n → E n) where
+structure IsExtensionOfVectorFieldOnSn (v : E n → E n) where
   isCont : Continuous v
-  isTang : ∀ x : E n, x ∈ unitSphere n → ⟪x, (v x)⟫_ℝ = 0
+  isTang : ∀ x : E n, ⟪x, (v x)⟫_ℝ = 0
+  isExtension : ∀ x : E n, ∀ r > 0, v (r • x) = r • v x
 
 
 
 section
 
-variable (v : E n → E n) (hv : IsVectorFieldOnSn n v)
+variable (v : E n → E n) (hv : IsExtensionOfVectorFieldOnSn n v)
   {vContDiff : ContDiff ℝ 1 v}
   {vUnit : ∀ x : E n, ‖v x‖ = ‖x‖}
   {A : Set (E n)} (AComp : IsCompact A)
@@ -46,22 +51,51 @@ open Topology
 
 variable {v}
 
-lemma measurable_ft : ∀ t, Measurable (f t) :=
-  fun _ => measurable_id.add (measurable_const.smul hv.isCont.measurable)
+lemma continuous_ft (t : ℝ) : Continuous (f t) :=
+  continuous_id.add (continuous_const.smul vContDiff.continuous)
+
+lemma measurable_ft (t : ℝ) : Measurable (f t) :=
+  measurable_id.add (measurable_const.smul hv.isCont.measurable)
+
+lemma vLip' : ∃ c : NNReal, LipschitzWith c (fun x : A => v x) := by
+  have : HasCompactSupport (fun x : A => v x) := by
+    sorry
+  -- apply ContDiff.lipschitzWith_of_hasCompactSupport this _ (le_refl)
+  sorry
 
 /- v est lipschitzienne sur A -/
-lemma vLip : ∃ c > 0, LipschitzOnWith c v A := by
+lemma vLip : ∃ c, LipschitzOnWith c v A := by
+  let ⟨r, hr⟩ := AComp.isBounded.subset_ball 0
+  let ⟨c, hc⟩ := (Euclidean.isCompact_closedBall (x := 0)
+    (r := |r|)).exists_bound_of_continuousOn ((vContDiff.continuous_fderiv (le_refl 1)).continuousOn)
+  use ⟨c, le_trans (norm_nonneg _) (hc 0 (Metric.mem_closedBall_self (abs_nonneg r)))⟩
+  apply LipschitzOnWith.mono _ ((hr.trans (Metric.ball_subset_ball (le_abs_self r))).trans Metric.ball_subset_closedBall)
+  apply (convex_closedBall 0 |r|).lipschitzOnWith_of_nnnorm_fderiv_le (𝕜 := ℝ)
+    (fun x _ => vContDiff.contDiffAt.differentiableAt (le_refl 1))
+  intro x hx
+  have : x ∈ Euclidean.closedBall 0 |r| := by
+    simp [Euclidean.closedBall_eq_preimage]
+    rw [← sub_zero x]
+    sorry
+  rw [Euclidean.closedBall_eq_preimage] at hc
+  simp at hc
   sorry
 
-lemma ftx_eq_fty (t : ℝ) {x y : E n} {hx : x ∈ A} {hy : y ∈ A} (h : f t x = f t y) : x - y = t • (v y - v x) := by
-  sorry
+lemma ftx_eq_fty (t : ℝ) {x y : E n} (h : f t x = f t y) :
+    x - y = t • (v y - v x) := by
+  rw [smul_sub, sub_eq_sub_iff_add_eq_add, add_comm _ y]
+  exact h
 
-lemma eq_zero_of_le_self {α t : ℝ} (ht : |t| < 1) (h : α ≤ |t| * α) : α = 0 := by
-  sorry
+lemma eq_zero_of_le_self {α t : ℝ} (hα : 0 ≤ α) (ht : |t| < 1) (h : α ≤ |t| * α) :
+    α = 0 := by
+  by_contra h_contra
+  have : 1 ≤ |t| := by
+    rwa [← mul_le_mul_right (hα.lt_of_ne (ne_comm.1 h_contra)), one_mul]
+  linarith
 
 /- f t est injectif sur A pour t assez petit -/
 lemma InjOn_A_ft : ∀ᶠ t in 𝓝 0, A.InjOn (f t) := by
-  let ⟨c, cpos, hc⟩ := @vLip n v A
+  /- let ⟨c, hc⟩ := @vLip n v vContDiff A AComp
   rw [eventually_nhds_iff]
   use (Metric.ball 0 c⁻¹)
   simp
@@ -82,7 +116,8 @@ lemma InjOn_A_ft : ∀ᶠ t in 𝓝 0, A.InjOn (f t) := by
     · rw [ht0]
       simp
     · -- apply le_trans ((mul_le_mul_left (abs_pos.2 ht0)).2 (hc hy hx))
-      sorry
+      sorry -/
+  sorry
 
 /- f t est différentiable -/
 lemma Diff_ft : ∀ t : ℝ, Differentiable ℝ (f t) := by
@@ -103,6 +138,9 @@ lemma ftDeriv (t : ℝ) : ∀ x ∈ A, HasFDerivWithinAt (f t) (f' t x) A x :=
 lemma ftStrictDeriv (t : ℝ) (x : E n) : HasStrictFDerivAt (f t) (f' t x) x :=
   (hasStrictFDerivAt_id x).add
     ((vContDiff.contDiffAt.hasStrictFDerivAt le_rfl).const_smul t)
+
+
+section vol_poly
 
 local notation "jac_f" =>
   fun (x : E n) ↦ LinearMap.toMatrix' (fderiv ℝ v x : E n →ₗ[ℝ] E n)
@@ -213,7 +251,7 @@ lemma continuous_coeff_C_add_C_mul_X {a : ℝ} {b : E n → ℝ} {k : ℕ} (h : 
 def my_coe (u : E n →L[ℝ] E n) : E n → E n := u
 
 lemma continuous_my_coe : Continuous (my_coe n) :=
-  sorry
+  continuous_pi fun x => (ContinuousLinearMap.apply ℝ (E n) x).continuous
 
 lemma continuous_jac_f_apply {i j : Fin n} :
     Continuous (fun x => jac_f x i j) := by
@@ -279,15 +317,12 @@ lemma continuous_coeff_prod' (k : ℕ) (P : Fin n → E n → ℝ[X])
   rw [this]
   exact continuous_coeff_prod _ _ _ n_pos le_rfl _ _ hP
 
-/- LinearMap.toMatrix : ça devrait aller
-+ det commute avec les morphismes d'algebre -/
 /- det (f' t x) est polynomial en t et les coefficients sont continus en x -/
 lemma f't_det_poly : ∃ P : E n → Polynomial ℝ,
     (∀ x : E n, (P x).natDegree ≤ n)
     ∧ (∀ x : E n, (P x).coeff 0 = 1)
     ∧ (∀ t : ℝ, ∀ x : E n, (f' t x).det = (P x).eval t)
     ∧ (∀ k : ℕ, Continuous fun x => (P x).coeff k) := by
-    -- ∧ (∀ k : ℕ, Measurable fun x => (P x).coeff k)
   let P := (fun x =>
     (of (fun i j => (if i = j then 1 else 0) + C (jac_f x i j) * X)).det)
   use P
@@ -358,7 +393,6 @@ lemma f't_det_poly : ∃ P : E n → Polynomial ℝ,
             (fun _ => continuous_if_const _
             (fun _ => (@continuous_jac_f_apply n v vContDiff _ _))
             (fun _ => continuous_const))
-
 
 lemma zero_lt_continuous (g : ℝ → ℝ) (hg : Continuous g) (h0 : g 0 = 1) : ∀ᶠ t in 𝓝 0, 0 < g t :=
   eventually_gt_of_tendsto_gt (by linarith) (hg.tendsto' _ _ rfl)
@@ -437,7 +471,6 @@ lemma abs_det_f't_poly : ∃ P : E n → Polynomial ℝ,
     (∀ x : E n, (P x).natDegree ≤ n)
     ∧ (∀ᶠ t in 𝓝 0, ∀ x : A, |(f' t x).det| = (P x).eval t)
     ∧ (∀ k : ℕ, Continuous fun x => (P x).coeff k) := by
-    -- ∧ (∀ k : ℕ, Measurable fun x => (P x).coeff k) := by
   have ⟨P, hP⟩ := @f't_det_poly n n_pos v vContDiff
   refine ⟨P, hP.1, ?_, hP.2.2.2⟩
   filter_upwards [@zero_lt_det_f't n n_pos v vContDiff A AComp] with t hpos x
@@ -473,66 +506,139 @@ lemma vol_ft_A_poly : ∃ P : Polynomial ℝ, ∀ᶠ t in 𝓝 0,
     rw [integral_smul_const]
   rw [this]
 
+end vol_poly
+
+
+open Set
+
 /- LinearMap.equivOfDetNeZero, toContinuousLinearEquiv -/
 /- f' t est une equivalence linéaire si t est assez petit -/
-@[simps!?]
-noncomputable def f't_equiv (t : ℝ) (x : E n) : E n ≃L[ℝ] E n where
-  toLinearMap := f' t x
-  invFun := sorry
-  left_inv := sorry
-  right_inv := sorry
-  continuous_toFun := sorry
-  continuous_invFun := sorry
-
-lemma inner_self_v_eq_zero (t : ℝ) (x : E n) : ⟪x, t • v x⟫_ℝ = 0 := by
+-- @[simps!?]
+noncomputable def f't_equiv (t : ℝ) (x : E n) : E n ≃L[ℝ] E n :=
+  -- LinearEquiv.toContinuousLinearEquiv (LinearMap.equivOfDDetNeZero (f' t x) )
   sorry
 
-lemma im_ft_subset (t : ℝ) : (f t) '' (unitSphere n) ⊆ Metric.sphere 0 (Real.sqrt (1 + t*t)) := by
-  intro y ⟨x, xUnit, hxy⟩
-  rw [← hxy]
-  simp
-  unfold unitSphere at xUnit
-  have : ‖x‖ = 1 := by simp at xUnit; assumption
-  rw [← Real.sqrt_mul_self (norm_nonneg _), norm_add_sq_eq_norm_sq_add_norm_sq_real (inner_self_v_eq_zero n t x)]
-  rw [this, norm_smul, vUnit x, this]
-  simp
+lemma inner_self_v_eq_zero_of_norm_one (t : ℝ) (x : E n) :
+    ⟪x, t • v x⟫_ℝ = 0 := by
+  rw [inner_smul_right, hv.isTang x, mul_zero]
 
-lemma rank_EuclideanSpace : FiniteDimensional.finrank ℝ (E n) = n + 1 := by
-  sorry
+lemma ft_mem_sphere_of_mem_sphere (t : ℝ) (x : unitSphere n) :
+    f t x ∈ Metric.sphere 0 (Real.sqrt (1 + t*t)) := by
+  rw [mem_sphere_iff_norm, sub_zero, ← Real.sqrt_mul_self (norm_nonneg _),
+    norm_add_sq_eq_norm_sq_add_norm_sq_real
+    (inner_self_v_eq_zero_of_norm_one n hv t x)]
+  simp [(mem_unitSphere_iff_norm_one n x).1 (Subtype.mem x), norm_smul, vUnit x]
+
+lemma image_ft_subset_sphere (t : ℝ) :
+    (f t) '' (unitSphere n) ⊆ Metric.sphere 0 (Real.sqrt (1 + t*t)) :=
+  fun y ⟨x, hx, hxy⟩ => by
+    rw [← hxy]
+    exact @ft_mem_sphere_of_mem_sphere _ _ hv vUnit t ⟨x, hx⟩
+
+lemma ft_mapsTo_sphere (t : ℝ) : MapsTo (f t) (unitSphere n)
+    (Metric.sphere 0 (Real.sqrt (1 + t * t))) :=
+  fun x hx => @ft_mem_sphere_of_mem_sphere n _ hv vUnit t ⟨x, hx⟩
+
+lemma rank_EuclideanSpace : FiniteDimensional.finrank ℝ (E n) = n := by
+  rw [finrank_euclideanSpace, Fintype.card_fin]
+
+variable (hn : 1 < n)
 
 lemma one_lt_rank_EuclideanSpace : 1 < Module.rank ℝ (E n) := by
   apply FiniteDimensional.one_lt_rank_of_one_lt_finrank
   rw [rank_EuclideanSpace]
   linarith
 
-local notation "f_restr" => fun (t : ℝ) ↦ Set.restrictPreimage (Metric.sphere 0 (Real.sqrt (1 + t*t))) (f t)
+local notation "f_restr" =>
+  fun (t : ℝ) ↦ MapsTo.restrict _ _ _ (@ft_mapsTo_sphere n _ hv vUnit t)
 
-lemma ft_preimage (t : ℝ) : (f t) ⁻¹' (Metric.sphere 0 (Real.sqrt (1 + t*t))) = unitSphere n := by
+lemma continuous_ft_restr (t : ℝ) : Continuous (f_restr t) :=
+  (@continuous_ft n _ vContDiff t).restrict _
+
+lemma ft_preimage_sphere (t : ℝ) :
+    (f t) ⁻¹' (Metric.sphere 0 (Real.sqrt (1 + t*t))) = unitSphere n := by
+  ext x
+  rw [mem_preimage, mem_sphere_iff_norm, sub_zero,
+    ← (sq_eq_sq (norm_nonneg _) (Real.sqrt_nonneg _)), Real.sq_sqrt, norm_add_sq_real,
+    mem_unitSphere_iff_norm_one, norm_smul]
   sorry
+  sorry
+
+/- lemma ft_restr_strictFDeriv (t : ℝ) (x : unitSphere n) :
+    HasStrictFDerivAt (f_restr t) (f' t x) x := by
+  sorry -/
+
+/- lemma ft_restr_eq_restrictPreimage_restrict (t : ℝ) :
+    f_restr t = restrictPreimage (Metric.sphere 0 (Real.sqrt (1 + t * t))) (f t) := by
+  sorry -/
+
+lemma isOpenMap_ft : ∀ᶠ t in 𝓝 0, IsOpenMap (restrict (Metric.ball 0 2) (f t)) := by
+  sorry
+  -- apply isOpenMap_of_hasStrictFDerivAt_equiv (ftStrictDeriv n t)
 
 /- Mq f(unitSphere) = f(E) ∩ Metric.sphere 0 (Real.sqrt (1 + t*t)) puis OK -/
 /- f t est ouverte pour t assez petit (théorème d'inversion globale) -/
-lemma ft_open : ∀ᶠ t in 𝓝 0, IsOpenMap (f_restr t) := by
-  sorry
-/-  let ⟨ε, εpos, h⟩ := @ftStrictDeriv n v /- ??? -/
-  use ε
-  constructor; assumption
-  intro t ht
-  /- apply open_map_of_strict_fderiv_equiv (𝕜 := ℝ) (h t ht) -/
-  sorry -/
-
-lemma connected_sphere (t : ℝ) : IsConnected (Metric.sphere (0 : E n) (Real.sqrt (1 + t*t))) :=
-  isConnected_sphere (one_lt_rank_EuclideanSpace n n_pos) 0 (Real.sqrt_nonneg (1 + t*t))
-
-lemma im_ft_open : ∀ᶠ t in 𝓝 0, IsOpen ((f t) '' (unitSphere n)) := by
+lemma isOpenMap_ft_restr : ∀ᶠ t in 𝓝 0, IsOpenMap (f_restr t) := by
+  filter_upwards [@isOpenMap_ft n v] with t ht
+  intro U hU
+  rw [MapsTo.restrict_eq_codRestrict]
+  -- filter_upwards [@zero_lt_det_f't n n_pos v vContDiff (unitSphere n) (isCompact_sphere _ _)]
+  -- intro t h U hU
+  -- rw [image_restrictPreimage]
+  -- let f't_equiv := fun x : unitSphere n =>
+  --  (f' t x : E n →ₗ[ℝ] E n).equivOfDetNeZero (h x).ne.symm
   sorry
 
-lemma im_ft_closed : ∀ᶠ t in 𝓝 0, IsClosed ((f t) '' (unitSphere n)) := by
+lemma isConnected_sphere_E (t : ℝ) : IsConnected (Metric.sphere (0 : E n) (Real.sqrt (1 + t*t))) :=
+  isConnected_sphere (one_lt_rank_EuclideanSpace n hn) 0 (Real.sqrt_nonneg (1 + t*t))
+
+lemma image_ft_eq_image_ft_restr (t : ℝ) :
+    (f t) '' (unitSphere n) = range (f_restr t) := by
+  ext y
+  refine ⟨fun ⟨x, hx, hxy⟩ => (mem_image _ _ _).2 ?_,
+    fun ⟨y', ⟨x, hxy'⟩, hyy'⟩ => (mem_image _ _ _).2
+    ⟨x, ⟨Subtype.mem _, by simp [← hyy', ← hxy']⟩⟩⟩
+  have y_mem_sphere : y ∈ Metric.sphere 0 (Real.sqrt (1 + t * t)) := by
+    rw [← hxy]
+    exact @ft_mem_sphere_of_mem_sphere _ _ hv vUnit t ⟨x, hx⟩
+  exact ⟨⟨y, y_mem_sphere⟩, ⟨mem_range.2 ⟨⟨x, hx⟩,
+    Subtype.val_injective (by simp [hxy])⟩, by simp⟩⟩
+
+lemma isOpen_image_ft_restr : ∀ᶠ t in 𝓝 0, IsOpen (range (f_restr t)) := by
+  filter_upwards [@isOpenMap_ft_restr n _ hv vUnit] with t ht
+  exact ht.isOpen_range
+
+lemma isClosed_image_ft (t : ℝ) : IsClosed ((f t) '' (unitSphere n)) :=
+  ((isCompact_sphere _ _).image (@continuous_ft n v vContDiff t)).isClosed
+
+lemma isClosed_image_ft_restr (t : ℝ) : IsClosed (range (f_restr t)) :=
+  (isCompact_range (@continuous_ft_restr _ _ hv vContDiff vUnit t)).isClosed
+
+instance instNontrivialE : Nontrivial (E n) := by
   sorry
 
-lemma im_ft : ∀ᶠ t in 𝓝 0,
-  (f t) '' (unitSphere n) = Metric.sphere 0 (Real.sqrt (1 + t*t)) := by
-  sorry
+lemma image_preimage_eq_self {α : Type} (s : Set α) :
+    Subtype.val '' (Subtype.val ⁻¹' s : Set s) = s := by
+  rw [Subtype.image_preimage_coe, inter_self]
+
+lemma useless_lemma2 {α : Type} {s s' t : Set α} (h : s = s') (h' : s ⊆ t) : s' ⊆ t := by
+  rwa [← h]
+
+lemma image_ft_eq_sphere : ∀ᶠ t in 𝓝 0,
+    (f t) '' (unitSphere n) = Metric.sphere 0 (Real.sqrt (1 + t*t)) := by
+  filter_upwards [@isOpen_image_ft_restr _ _ hv vUnit] with t ht
+  apply eq_of_subset_of_subset (@image_ft_subset_sphere _ _ hv vUnit t)
+  rw [@image_ft_eq_image_ft_restr _ _ hv vUnit]
+  apply useless_lemma2 (image_preimage_eq_self _)
+  apply (image_subset_image_iff Subtype.val_injective).2
+  rw [Subtype.coe_preimage_self]
+  refine (Subtype.connectedSpace
+    (isConnected_sphere_E n hn t)).isPreconnected_univ.subset_isClopen
+    ⟨@isClosed_image_ft_restr _ _ hv vContDiff vUnit t, ht⟩ ?_
+  rw [univ_inter]
+  apply Nonempty.of_image
+  rw [← @image_ft_eq_image_ft_restr _ _ hv vUnit]
+  apply (NormedSpace.sphere_nonempty.2 (zero_le_one)).image
 
 theorem HairyBallDiff : ∃ x, v x = 0 := by
   sorry
@@ -543,7 +649,7 @@ end
 
 section
 
-variable (v : E n → E n) (hv : IsVectorFieldOnSn n v)
+variable (v : E n → E n) (hv : IsExtensionOfVectorFieldOnSn n v)
 
 theorem HairyBallTheorem : ∃ x, v x = 0 := by
   sorry

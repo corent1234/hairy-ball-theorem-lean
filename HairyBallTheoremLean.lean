@@ -6,6 +6,7 @@ import Mathlib.Analysis.InnerProductSpace.PiL2
 import Mathlib.Analysis.InnerProductSpace.EuclideanDist
 import Mathlib.Analysis.Calculus.ContDiff.Defs
 import Mathlib.Analysis.Calculus.ContDiff.RCLike
+import Mathlib.Analysis.Calculus.Deriv.Polynomial
 import Mathlib.Analysis.Calculus.FDeriv.Add
 import Mathlib.Analysis.Calculus.InverseFunctionTheorem.FDeriv
 import Mathlib.Analysis.NormedSpace.Connected
@@ -23,9 +24,6 @@ variable (n : ℕ) (n_pos : 0 < n)
 
 abbrev E := EuclideanSpace ℝ (Fin n)
 abbrev unitSphere := Metric.sphere (0 : E n) 1
-
-lemma mem_unitSphere_iff_norm_one (x : E n) : x ∈ unitSphere n ↔ ‖x‖ = 1 := by
-  rw [mem_sphere_iff_norm, sub_zero]
 
 /- structure ?-/
 structure IsExtensionOfVectorFieldOnSn (v : E n → E n) where
@@ -94,7 +92,7 @@ lemma eq_zero_of_le_self {α t : ℝ} (hα : 0 ≤ α) (ht : |t| < 1) (h : α �
   linarith
 
 /- f t est injectif sur A pour t assez petit -/
-lemma InjOn_A_ft : ∀ᶠ t in 𝓝 0, A.InjOn (f t) := by
+lemma injOn_A_ft : ∀ᶠ t in 𝓝 0, A.InjOn (f t) := by
   /- let ⟨c, hc⟩ := @vLip n v vContDiff A AComp
   rw [eventually_nhds_iff]
   use (Metric.ball 0 c⁻¹)
@@ -117,10 +115,6 @@ lemma InjOn_A_ft : ∀ᶠ t in 𝓝 0, A.InjOn (f t) := by
       simp
     · -- apply le_trans ((mul_le_mul_left (abs_pos.2 ht0)).2 (hc hy hx))
       sorry -/
-  sorry
-
-/- f t est différentiable -/
-lemma Diff_ft : ∀ t : ℝ, Differentiable ℝ (f t) := by
   sorry
 
 /- différentielle de f t en x -/
@@ -153,14 +147,14 @@ lemma meas_A : MeasurableSet A :=
 
 lemma lintegral_abs_det_f't : ∀ᶠ t in 𝓝 0,
     ∫⁻ x in A, ENNReal.ofReal |(f' t x).det| ∂volume = volume ((f t) '' A) := by
-  filter_upwards [@InjOn_A_ft n v A] with t hinj
+  filter_upwards [@injOn_A_ft n v A] with t hinj
   exact lintegral_abs_det_fderiv_eq_addHaar_image volume
     (meas_A n AComp) (@ftDeriv n v vContDiff A t) hinj
 
 lemma ft_volume_withDensity_abs_det_f't_eq_volume : ∀ᶠ t in 𝓝 0,
     Measure.map (f t) ((volume.restrict A).withDensity fun x => ENNReal.ofReal |(f' t x).det|)
     = volume.restrict ((f t) '' A) := by
-  filter_upwards [@InjOn_A_ft n v A] with t hinj
+  filter_upwards [@injOn_A_ft n v A] with t hinj
   exact map_withDensity_abs_det_fderiv_eq_addHaar volume
     (meas_A n AComp) (@ftDeriv n v vContDiff A t) hinj (measurable_ft n hv t)
 
@@ -514,9 +508,9 @@ open Set
 /- LinearMap.equivOfDetNeZero, toContinuousLinearEquiv -/
 /- f' t est une equivalence linéaire si t est assez petit -/
 -- @[simps!?]
-noncomputable def f't_equiv (t : ℝ) (x : E n) : E n ≃L[ℝ] E n :=
+/- noncomputable def f't_equiv : ∀ᶠ t in 𝓝 0, E n ≃L[ℝ] E n :=
   -- LinearEquiv.toContinuousLinearEquiv (LinearMap.equivOfDDetNeZero (f' t x) )
-  sorry
+  sorry -/
 
 lemma inner_self_v_eq_zero_of_norm_one (t : ℝ) (x : E n) :
     ⟪x, t • v x⟫_ℝ = 0 := by
@@ -527,7 +521,7 @@ lemma ft_mem_sphere_of_mem_sphere (t : ℝ) (x : unitSphere n) :
   rw [mem_sphere_iff_norm, sub_zero, ← Real.sqrt_mul_self (norm_nonneg _),
     norm_add_sq_eq_norm_sq_add_norm_sq_real
     (inner_self_v_eq_zero_of_norm_one n hv t x)]
-  simp [(mem_unitSphere_iff_norm_one n x).1 (Subtype.mem x), norm_smul, vUnit x]
+  simp [mem_sphere_zero_iff_norm.1 (Subtype.mem x), norm_smul, vUnit x]
 
 lemma image_ft_subset_sphere (t : ℝ) :
     (f t) '' (unitSphere n) ⊆ Metric.sphere 0 (Real.sqrt (1 + t*t)) :=
@@ -542,7 +536,7 @@ lemma ft_mapsTo_sphere (t : ℝ) : MapsTo (f t) (unitSphere n)
 lemma rank_EuclideanSpace : FiniteDimensional.finrank ℝ (E n) = n := by
   rw [finrank_euclideanSpace, Fintype.card_fin]
 
-variable (hn : 1 < n)
+variable (hn : 1 < n) (vContDiff) (vUnit)
 
 lemma one_lt_rank_EuclideanSpace : 1 < Module.rank ℝ (E n) := by
   apply FiniteDimensional.one_lt_rank_of_one_lt_finrank
@@ -550,44 +544,80 @@ lemma one_lt_rank_EuclideanSpace : 1 < Module.rank ℝ (E n) := by
   linarith
 
 local notation "f_restr" =>
-  fun (t : ℝ) ↦ MapsTo.restrict _ _ _ (@ft_mapsTo_sphere n _ hv vUnit t)
+  fun (t : ℝ) ↦ restrictPreimage (Metric.sphere 0 (Real.sqrt (1 + t * t))) (f t)
 
 lemma continuous_ft_restr (t : ℝ) : Continuous (f_restr t) :=
   (@continuous_ft n _ vContDiff t).restrict _
 
 lemma ft_preimage_sphere (t : ℝ) :
-    (f t) ⁻¹' (Metric.sphere 0 (Real.sqrt (1 + t*t))) = unitSphere n := by
+    (f t) ⁻¹' (Metric.sphere 0 (Real.sqrt (1 + t * t))) = unitSphere n := by
   ext x
   rw [mem_preimage, mem_sphere_iff_norm, sub_zero,
-    ← (sq_eq_sq (norm_nonneg _) (Real.sqrt_nonneg _)), Real.sq_sqrt, norm_add_sq_real,
-    mem_unitSphere_iff_norm_one, norm_smul]
-  sorry
-  sorry
+    ← (sq_eq_sq (norm_nonneg _) (Real.sqrt_nonneg _)),
+    Real.sq_sqrt (add_nonneg (zero_le_one) (mul_self_nonneg _)),
+    norm_add_sq_real, mem_sphere_zero_iff_norm, norm_smul, inner_smul_right,
+    vUnit, hv.isTang, ← abs_mul_abs_self, Real.norm_eq_abs, ← mul_one (1 + _)]
+  simp only [mul_zero, add_zero]
+  have : ‖x‖ ^ 2 + (|t| * ‖x‖) ^ 2 = (1 + |t| * |t|) * ‖x‖ ^ 2 := by ring
+  rw [this, mul_eq_mul_left_iff, sq_eq_one_iff]
+  simp only [(add_pos_of_pos_of_nonneg (zero_lt_one) (mul_self_nonneg |t|)).ne.symm,
+    (lt_of_lt_of_le neg_one_lt_zero (norm_nonneg _)).ne.symm]
+  simp
 
-/- lemma ft_restr_strictFDeriv (t : ℝ) (x : unitSphere n) :
-    HasStrictFDerivAt (f_restr t) (f' t x) x := by
+instance instCompactPreimageSphere (t : ℝ) :
+    CompactSpace ((f t) ⁻¹' (Metric.sphere 0 (Real.sqrt (1 + t * t)))) := by
+  rw [ft_preimage_sphere n hv vUnit]
+  exact Metric.sphere.compactSpace _ _
+
+/- lemma ft_restr_strictFDeriv (t : ℝ) (x : Metric.ball (0 : E n) 2) :
+    HasStrictFDerivAt (restrict (Metric.ball 0 2) (f t)) (f' t x) x := by
   sorry -/
 
 /- lemma ft_restr_eq_restrictPreimage_restrict (t : ℝ) :
     f_restr t = restrictPreimage (Metric.sphere 0 (Real.sqrt (1 + t * t))) (f t) := by
   sorry -/
 
-lemma isOpenMap_ft : ∀ᶠ t in 𝓝 0, IsOpenMap (restrict (Metric.ball 0 2) (f t)) := by
-  sorry
-  -- apply isOpenMap_of_hasStrictFDerivAt_equiv (ftStrictDeriv n t)
+lemma preimage_restrict {α β : Type} (s : Set α) (g : α → β) (t : Set β) :
+    (restrict s g) ⁻¹' t = s ∩ (g ⁻¹' t) := by
+  rw [restrict_eq, preimage_comp]
+  exact eq_of_subset_of_subset (subset_inter (Subtype.coe_image_subset _ _)
+    (image_preimage_subset _ _))
+    (fun x hx => ⟨⟨x, hx.1⟩, ⟨mem_preimage.2 hx.2, rfl⟩⟩)
 
-/- Mq f(unitSphere) = f(E) ∩ Metric.sphere 0 (Real.sqrt (1 + t*t)) puis OK -/
-/- f t est ouverte pour t assez petit (théorème d'inversion globale) -/
+lemma isOpenMap_ft : ∀ᶠ t in 𝓝 0, IsOpenMap (restrict (Metric.ball 0 2) (f t)) := by
+  filter_upwards [@zero_lt_det_f't n n_pos _ vContDiff _
+    (ProperSpace.isCompact_closedBall 0 2)] with t ht
+  refine isOpenMap_iff_nhds_le.2 (fun ⟨x, hx⟩ => ?_)
+  rw [restrict_apply, restrict_eq, ← Filter.map_map,
+    ← @HasStrictFDerivAt.map_nhds_eq_of_equiv ℝ _ _ _ _ _ _ _ _ _
+    ((f' t x).equivOfDetNeZero (ht ⟨x, mem_closedBall_zero_iff.2
+    (le_of_lt (mem_ball_zero_iff.1 hx))⟩).ne.symm).toContinuousLinearEquiv _
+    (@ftStrictDeriv n _ vContDiff t x)]
+  -- have : Filter.map Subtype.val (𝓝 (⟨x, hx⟩ : Metric.ball (0 : E n) 2)) = 𝓝 x := by
+  --  apply eq_of_le_of_le
+  exact Filter.le_map (fun s hs => Filter.mem_map.2 ((𝓝 x).sets_of_superset
+    (nhds_of_nhdsWithin_of_nhds (mem_nhds_iff.2 ⟨(Metric.ball 0 2),
+    ⟨subset_rfl, ⟨Metric.isOpen_ball, hx⟩⟩⟩) (preimage_coe_mem_nhds_subtype.1
+    (Filter.mem_map.1 hs))) (subset_preimage_image _ _)))
+
+lemma subtype_val_preimage_ball_eq_sphere (t : ℝ) :
+    (univ : Set ((f t) ⁻¹' (Metric.sphere 0 (Real.sqrt (1 + t * t)))))
+    = (Subtype.val ⁻¹' (Metric.ball (0 : E n) 2)) := by
+  apply eq_preimage_subtype_val_iff.2
+  rw [ft_preimage_sphere n hv vUnit]
+  exact fun x hx =>
+    ⟨fun _ => mem_ball_zero_iff.2 (by rw [mem_sphere_zero_iff_norm.1 hx]; linarith),
+    fun _ => mem_univ _⟩
+
+/- f t : unitSphere n → Metric.sphere 0 (sqrt (1 + t*t)) est ouverte pour t assez petit -/
 lemma isOpenMap_ft_restr : ∀ᶠ t in 𝓝 0, IsOpenMap (f_restr t) := by
-  filter_upwards [@isOpenMap_ft n v] with t ht
-  intro U hU
-  rw [MapsTo.restrict_eq_codRestrict]
-  -- filter_upwards [@zero_lt_det_f't n n_pos v vContDiff (unitSphere n) (isCompact_sphere _ _)]
-  -- intro t h U hU
-  -- rw [image_restrictPreimage]
-  -- let f't_equiv := fun x : unitSphere n =>
-  --  (f' t x : E n →ₗ[ℝ] E n).equivOfDetNeZero (h x).ne.symm
-  sorry
+  filter_upwards [@isOpenMap_ft n n_pos v vContDiff] with t ht
+  intro U ⟨V, hV, hUV⟩
+  have : U = Subtype.val ⁻¹' (V ∩ Metric.ball 0 2) := by
+    rw [preimage_inter, hUV, ← subtype_val_preimage_ball_eq_sphere n hv vUnit, inter_univ]
+  rw [this, image_restrictPreimage, ← image_restrict]
+  exact continuous_subtype_val.isOpen_preimage _
+    (ht _ (continuous_subtype_val.isOpen_preimage _ hV))
 
 lemma isConnected_sphere_E (t : ℝ) : IsConnected (Metric.sphere (0 : E n) (Real.sqrt (1 + t*t))) :=
   isConnected_sphere (one_lt_rank_EuclideanSpace n hn) 0 (Real.sqrt_nonneg (1 + t*t))
@@ -597,22 +627,25 @@ lemma image_ft_eq_image_ft_restr (t : ℝ) :
   ext y
   refine ⟨fun ⟨x, hx, hxy⟩ => (mem_image _ _ _).2 ?_,
     fun ⟨y', ⟨x, hxy'⟩, hyy'⟩ => (mem_image _ _ _).2
-    ⟨x, ⟨Subtype.mem _, by simp [← hyy', ← hxy']⟩⟩⟩
+    ⟨x, ⟨by simp [← ft_preimage_sphere n hv vUnit t, Subtype.mem x],
+    by simp [← hyy', ← hxy']⟩⟩⟩
   have y_mem_sphere : y ∈ Metric.sphere 0 (Real.sqrt (1 + t * t)) := by
     rw [← hxy]
     exact @ft_mem_sphere_of_mem_sphere _ _ hv vUnit t ⟨x, hx⟩
-  exact ⟨⟨y, y_mem_sphere⟩, ⟨mem_range.2 ⟨⟨x, hx⟩,
-    Subtype.val_injective (by simp [hxy])⟩, by simp⟩⟩
+  use ⟨y, y_mem_sphere⟩
+  exact ⟨mem_range.2 ⟨⟨x, by rwa [mem_preimage, hxy]⟩,
+    Subtype.val_injective (by simp [hxy])⟩, by simp⟩
 
 lemma isOpen_image_ft_restr : ∀ᶠ t in 𝓝 0, IsOpen (range (f_restr t)) := by
-  filter_upwards [@isOpenMap_ft_restr n _ hv vUnit] with t ht
+  filter_upwards [isOpenMap_ft_restr n n_pos hv vContDiff vUnit] with t ht
   exact ht.isOpen_range
 
 lemma isClosed_image_ft (t : ℝ) : IsClosed ((f t) '' (unitSphere n)) :=
   ((isCompact_sphere _ _).image (@continuous_ft n v vContDiff t)).isClosed
 
 lemma isClosed_image_ft_restr (t : ℝ) : IsClosed (range (f_restr t)) :=
-  (isCompact_range (@continuous_ft_restr _ _ hv vContDiff vUnit t)).isClosed
+  (@isCompact_range _ _ _ _ (instCompactPreimageSphere n hv vUnit t) _
+  (continuous_ft_restr n vContDiff t)).isClosed
 
 instance instNontrivialE : Nontrivial (E n) := by
   sorry
@@ -626,7 +659,7 @@ lemma useless_lemma2 {α : Type} {s s' t : Set α} (h : s = s') (h' : s ⊆ t) :
 
 lemma image_ft_eq_sphere : ∀ᶠ t in 𝓝 0,
     (f t) '' (unitSphere n) = Metric.sphere 0 (Real.sqrt (1 + t*t)) := by
-  filter_upwards [@isOpen_image_ft_restr _ _ hv vUnit] with t ht
+  filter_upwards [isOpen_image_ft_restr n n_pos hv vContDiff vUnit] with t ht
   apply eq_of_subset_of_subset (@image_ft_subset_sphere _ _ hv vUnit t)
   rw [@image_ft_eq_image_ft_restr _ _ hv vUnit]
   apply useless_lemma2 (image_preimage_eq_self _)
@@ -634,11 +667,68 @@ lemma image_ft_eq_sphere : ∀ᶠ t in 𝓝 0,
   rw [Subtype.coe_preimage_self]
   refine (Subtype.connectedSpace
     (isConnected_sphere_E n hn t)).isPreconnected_univ.subset_isClopen
-    ⟨@isClosed_image_ft_restr _ _ hv vContDiff vUnit t, ht⟩ ?_
+    ⟨isClosed_image_ft_restr _ hv vContDiff vUnit t, ht⟩ ?_
   rw [univ_inter]
   apply Nonempty.of_image
   rw [← @image_ft_eq_image_ft_restr _ _ hv vUnit]
   apply (NormedSpace.sphere_nonempty.2 (zero_le_one)).image
+
+variable (odd_n : Odd n)
+
+open Polynomial
+
+lemma one_add_sq_natDegree : (1 + X * X : Polynomial ℝ).natDegree = 2 := by
+  rw [← C_1, natDegree_C_add, natDegree_mul X_ne_zero X_ne_zero, natDegree_X]
+
+lemma C_mul_X_add_C_mul_self (a b : ℝ) : (C a * X + C b) * (C a * X + C b)
+    = C (a * a) * X * X + C (2 * a * b) * X + C (b * b) := by
+  simp only [map_mul, map_ofNat]
+  ring
+
+lemma not_sqrt_one_add_sq_eq_poly :
+    ¬ (∃ P : Polynomial ℝ, ∀ t, Real.sqrt (1 + t * t) = P.eval t) := by
+  intro ⟨P, hP⟩
+  have eq_P_sq : 1 + X * X = P * P := by
+    refine Polynomial.funext (fun t => ?_)
+    rw [eval_mul, ← hP t, Real.mul_self_sqrt (add_nonneg (zero_le_one) (mul_self_nonneg _))]
+    simp
+  have P_ne_zero : P ≠ 0 :=
+    fun h => two_ne_zero (by simp [← one_add_sq_natDegree, eq_P_sq, h])
+  have P_natDegree_eq_one : P.natDegree = 1 := by
+    apply mul_left_cancel₀ two_ne_zero
+    rw [two_mul, ← natDegree_mul P_ne_zero P_ne_zero, ← eq_P_sq, one_add_sq_natDegree]
+  let ⟨a, b, hab⟩ := (exists_eq_X_add_C_of_natDegree_le_one (by rw [P_natDegree_eq_one]) :
+    ∃ a b, P = C a * X + C b)
+  rw [hab, C_mul_X_add_C_mul_self] at eq_P_sq
+  have h0 : coeff (1 + X * X) 0 = coeff _ 0 := by rw [eq_P_sq]
+  have h1 : coeff (1 + X * X) 1 = coeff _ 1 := by rw [eq_P_sq]
+  simp at h0
+  simp at h1
+  rw [← C_1, coeff_C_ne_zero (one_ne_zero)] at h1
+  have a0 : a = 0 :=
+    mul_left_cancel₀ two_ne_zero ((mul_right_cancel₀
+      (left_ne_zero_of_mul (ne_zero_of_eq_one h0.symm))) (by simp [← h1]))
+  rw [hab, a0, C_0, zero_mul, zero_add, natDegree_C] at P_natDegree_eq_one
+  exact zero_ne_one P_natDegree_eq_one
+
+lemma not_one_add_sq_pow_n_div_two_eq_poly :
+    ¬ (∃ P : Polynomial ℝ, ∀ t, (1 + t * t) ^ (n / 2 : ℝ) = P.eval t) := by
+  let ⟨m, hm⟩ := odd_n
+  rw [hm]
+  clear hm
+  induction' m with m ih <;> intro ⟨P, hP⟩
+  · simp only [Nat.zero_eq, mul_zero, zero_add, Nat.cast_one, ← Real.sqrt_eq_rpow] at hP
+    exact not_sqrt_one_add_sq_eq_poly ⟨P, hP⟩
+  · have : ∀ t : ℝ, (2 * m + 3) * (1 + t * t) ^ ((2 * m + 1) / 2)
+        = eval t (Polynomial.derivative P) := by
+      intro t
+      /- rw [← Polynomial.deriv, ← funext hP]
+      have : (fun x => eval x P) = (fun x => _) := by
+        ext x
+        rw [← hP] -/
+      sorry
+    sorry
+
 
 theorem HairyBallDiff : ∃ x, v x = 0 := by
   sorry
@@ -649,7 +739,7 @@ end
 
 section
 
-variable (v : E n → E n) (hv : IsExtensionOfVectorFieldOnSn n v)
+variable (v : E n → E n) (hv : IsExtensionOfVectorFieldOnSn n v) (odd_n : Odd n)
 
 theorem HairyBallTheorem : ∃ x, v x = 0 := by
   sorry

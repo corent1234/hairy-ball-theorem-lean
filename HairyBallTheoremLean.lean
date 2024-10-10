@@ -10,6 +10,7 @@ import Mathlib.Analysis.Calculus.Deriv.Polynomial
 import Mathlib.Analysis.Calculus.FDeriv.Add
 import Mathlib.Analysis.Calculus.InverseFunctionTheorem.FDeriv
 import Mathlib.Analysis.NormedSpace.Connected
+import Mathlib.Analysis.SpecialFunctions.Pow.Deriv
 import Mathlib.MeasureTheory.Measure.Lebesgue.Basic
 import Mathlib.MeasureTheory.Integral.Lebesgue
 import Mathlib.MeasureTheory.Function.Jacobian
@@ -593,8 +594,8 @@ lemma isOpenMap_ft : ∀ᶠ t in 𝓝 0, IsOpenMap (restrict (Metric.ball 0 2) (
     ((f' t x).equivOfDetNeZero (ht ⟨x, mem_closedBall_zero_iff.2
     (le_of_lt (mem_ball_zero_iff.1 hx))⟩).ne.symm).toContinuousLinearEquiv _
     (@ftStrictDeriv n _ vContDiff t x)]
-  -- have : Filter.map Subtype.val (𝓝 (⟨x, hx⟩ : Metric.ball (0 : E n) 2)) = 𝓝 x := by
-  --  apply eq_of_le_of_le
+  /- have : Filter.map Subtype.val (𝓝 (⟨x, hx⟩ : Metric.ball (0 : E n) 2)) = 𝓝 x := by
+    apply eq_of_le_of_le -/
   exact Filter.le_map (fun s hs => Filter.mem_map.2 ((𝓝 x).sets_of_superset
     (nhds_of_nhdsWithin_of_nhds (mem_nhds_iff.2 ⟨(Metric.ball 0 2),
     ⟨subset_rfl, ⟨Metric.isOpen_ball, hx⟩⟩⟩) (preimage_coe_mem_nhds_subtype.1
@@ -719,16 +720,25 @@ lemma not_one_add_sq_pow_n_div_two_eq_poly :
   induction' m with m ih <;> intro ⟨P, hP⟩
   · simp only [Nat.zero_eq, mul_zero, zero_add, Nat.cast_one, ← Real.sqrt_eq_rpow] at hP
     exact not_sqrt_one_add_sq_eq_poly ⟨P, hP⟩
-  · have : ∀ t : ℝ, (2 * m + 3) * (1 + t * t) ^ ((2 * m + 1) / 2)
-        = eval t (Polynomial.derivative P) := by
+  · have : ∀ t : ℝ, (2 * m + 3) * t * (1 + t * t) ^ ((2 * m + 1) / 2 : ℝ)
+        = eval t (derivative P) := by
       intro t
-      /- rw [← Polynomial.deriv, ← funext hP]
-      have : (fun x => eval x P) = (fun x => _) := by
-        ext x
-        rw [← hP] -/
+      rw [← Polynomial.deriv, ← _root_.funext hP, deriv_rpow_const
+        ((differentiableAt_id'.mul differentiableAt_id').const_add 1)
+        (Or.inl (lt_add_of_pos_of_le zero_lt_one (mul_self_nonneg t)).ne.symm),
+        deriv_const_add, deriv_mul differentiableAt_id differentiableAt_id,
+        deriv_id'', Nat.cast_add, Nat.cast_mul, Nat.cast_succ]
+      ring_nf
+    have derivative_coeff_zero : (derivative P).coeff 0 = 0 := by
+      simp [coeff_zero_eq_eval_zero, ← this]
+    apply ih
+    use C (1 / (2 * m + 3) : ℝ) * divX (derivative P)
+    intro t
+    rw [eval_mul, eval_C]
+    by_cases ht : t = 0
+    · simp [ht, ← coeff_zero_eq_eval_zero, coeff_derivative]
       sorry
     sorry
-
 
 theorem HairyBallDiff : ∃ x, v x = 0 := by
   sorry

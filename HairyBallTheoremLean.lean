@@ -1,7 +1,8 @@
-import Mathlib.Topology.MetricSpace.PseudoMetric
+import Mathlib.Topology.MetricSpace.Pseudo.Basic
 import Mathlib.Topology.Basic
 import Mathlib.Topology.Category.CompHaus.Basic
-import Mathlib.Topology.ContinuousFunction.Polynomial
+import Mathlib.Topology.ContinuousMap.Polynomial
+import Mathlib.Analysis.InnerProductSpace.Basic
 import Mathlib.Analysis.InnerProductSpace.PiL2
 import Mathlib.Analysis.InnerProductSpace.EuclideanDist
 import Mathlib.Analysis.Calculus.ContDiff.Defs
@@ -19,6 +20,8 @@ import Mathlib.LinearAlgebra.Dimension.Finrank
 
 set_option autoImplicit false
 
+open scoped RealInnerProductSpace
+
 
 
 variable (n : ℕ) (n_pos : 0 < n)
@@ -29,7 +32,7 @@ abbrev unitSphere := Metric.sphere (0 : E n) 1
 /- structure ?-/
 structure IsExtensionOfVectorFieldOnSn (v : E n → E n) where
   isCont : Continuous v
-  isTang : ∀ x : E n, ⟪x, (v x)⟫_ℝ = 0
+  isTang : ∀ x : E n, ⟪x, (v x)⟫ = 0
   isExtension : ∀ x : E n, ∀ r > 0, v (r • x) = r • v x
 
 
@@ -50,9 +53,11 @@ open Topology
 
 variable {v}
 
+include vContDiff in
 lemma continuous_ft (t : ℝ) : Continuous (f t) :=
   continuous_id.add (continuous_const.smul vContDiff.continuous)
 
+include hv in
 lemma measurable_ft (t : ℝ) : Measurable (f t) :=
   measurable_id.add (measurable_const.smul hv.isCont.measurable)
 
@@ -63,9 +68,10 @@ lemma vLip' : ∃ c : NNReal, LipschitzWith c (fun x : A => v x) := by
   sorry
 
 /- v est lipschitzienne sur A -/
+include AComp vContDiff in
 lemma vLip : ∃ c, LipschitzOnWith c v A := by
   let ⟨r, hr⟩ := AComp.isBounded.subset_ball 0
-  let ⟨c, hc⟩ := (Euclidean.isCompact_closedBall (x := 0)
+  let ⟨c, hc⟩ := (Euclidean.isCompact_closedBall (x := (0 : E n))
     (r := |r|)).exists_bound_of_continuousOn ((vContDiff.continuous_fderiv (le_refl 1)).continuousOn)
   use ⟨c, le_trans (norm_nonneg _) (hc 0 (Metric.mem_closedBall_self (abs_nonneg r)))⟩
   apply LipschitzOnWith.mono _ ((hr.trans (Metric.ball_subset_ball (le_abs_self r))).trans Metric.ball_subset_closedBall)
@@ -125,11 +131,13 @@ local notation "f'" =>
   (ContinuousLinearMap.id ℝ _) + (t • (fderiv ℝ v x)) -/
 
 /- f' t x est la différentielle de f t en x ∈ A -/
+include vContDiff in
 lemma ftDeriv (t : ℝ) : ∀ x ∈ A, HasFDerivWithinAt (f t) (f' t x) A x :=
   fun x _ => ((hasFDerivAt_id x).add
     ((vContDiff.differentiable le_rfl).differentiableAt.hasFDerivAt.const_smul t)).hasFDerivWithinAt
 
 /- f' t x est la différentielle (stricte) de f t en x -/
+include vContDiff in
 lemma ftStrictDeriv (t : ℝ) (x : E n) : HasStrictFDerivAt (f t) (f' t x) x :=
   (hasStrictFDerivAt_id x).add
     ((vContDiff.contDiffAt.hasStrictFDerivAt le_rfl).const_smul t)
@@ -143,15 +151,18 @@ local notation "jac_f" =>
 open MeasureTheory
 
 /- A est mesurable -/
+include AComp in
 lemma meas_A : MeasurableSet A :=
   AComp.isClosed.measurableSet
 
+include AComp vContDiff in
 lemma lintegral_abs_det_f't : ∀ᶠ t in 𝓝 0,
     ∫⁻ x in A, ENNReal.ofReal |(f' t x).det| ∂volume = volume ((f t) '' A) := by
   filter_upwards [@injOn_A_ft n v A] with t hinj
   exact lintegral_abs_det_fderiv_eq_addHaar_image volume
     (meas_A n AComp) (@ftDeriv n v vContDiff A t) hinj
 
+include AComp vContDiff hv in
 lemma ft_volume_withDensity_abs_det_f't_eq_volume : ∀ᶠ t in 𝓝 0,
     Measure.map (f t) ((volume.restrict A).withDensity fun x => ENNReal.ofReal |(f' t x).det|)
     = volume.restrict ((f t) '' A) := by
@@ -168,7 +179,7 @@ lemma natDegree_det (M : Matrix (Fin n) (Fin n) ℝ[X]) (h : ∀ i j, (M i j).na
   rw [det_apply]
   refine le_trans (natDegree_sum_le _ _) ((fold_max_le n).2 ⟨zero_le n, fun σ _ => ?_⟩)
   show natDegree ((Equiv.Perm.sign σ).val • univ.prod fun i => M (σ i) i) ≤ n
-  rw [← @intCast_smul ℝ ℝ[X] _ _ _ (Equiv.Perm.sign σ) (univ.prod fun i => M (σ i) i)]
+  rw [← @Int.cast_smul_eq_zsmul ℝ ℝ[X] _ _ _ (Equiv.Perm.sign σ) (univ.prod fun i => M (σ i) i)]
   refine le_trans (natDegree_smul_le (Equiv.Perm.sign σ : ℝ) (univ.prod fun i => M (σ i) i))
     (le_trans (natDegree_prod_le _ _) (le_trans (sum_le_sum (fun i _ => h (σ i) i)) ?_))
   simp
@@ -248,6 +259,7 @@ def my_coe (u : E n →L[ℝ] E n) : E n → E n := u
 lemma continuous_my_coe : Continuous (my_coe n) :=
   continuous_pi fun x => (ContinuousLinearMap.apply ℝ (E n) x).continuous
 
+include vContDiff in
 lemma continuous_jac_f_apply {i j : Fin n} :
     Continuous (fun x => jac_f x i j) := by
   simp
@@ -255,7 +267,7 @@ lemma continuous_jac_f_apply {i j : Fin n} :
     ((continuous_my_coe n).comp
     (vContDiff.continuous_fderiv (by rfl)))
 
-lemma ofNat'_val (m : ℕ) (hm : 0 < m) (i : Fin m) : Fin.ofNat' i.val hm = i := by
+lemma ofNat'_val (m : ℕ) (hm : 0 < m) (i : Fin m) : @Fin.ofNat' m (NeZero.of_gt hm) i.val = i := by
   apply Fin.eq_of_val_eq
   show i.val % m = i.val
   rw [Nat.mod_eq_of_lt (Fin.prop i)]
@@ -268,31 +280,33 @@ lemma univ_Fin_map_val_eq_range (m : ℕ) :
   · ext i
     rw [mem_range, mem_map]
     exact ⟨fun ⟨j,_,hj⟩ => by rw [← hj]; exact (Fin.prop j),
-      fun hi => ⟨Fin.ofNat' i (pos_iff_ne_zero.2 hm), mem_univ _, Nat.mod_eq_of_lt hi⟩⟩
+      fun hi => ⟨@Fin.ofNat' m (NeZero.mk hm) i, mem_univ _, Nat.mod_eq_of_lt hi⟩⟩
 
 lemma prod_univ_Fin_eq_prod_range {α : Type} [CommMonoid α] (m : ℕ) (g : ℕ → α) :
     (univ : Finset (Fin m)).prod (fun i => g i.val) = (range m).prod g := by
   rw [← univ_Fin_map_val_eq_range, prod_map]
   rfl
 
+include n_pos in
 lemma continuous_coeff_prod (m : ℕ) (hm : 0 < m) (hmn : m ≤ n) (k : ℕ)
     (P : Fin n → E n → ℝ[X]) (hP : ∀ i k', Continuous (fun x => (P i x).coeff k')) :
-    Continuous fun x => ((univ : Finset (Fin m)).prod (fun i => P (Fin.ofNat' i n_pos) x)).coeff k := by
-  have : (fun x => ((univ : Finset (Fin m)).prod (fun i => P (Fin.ofNat' i n_pos) x)).coeff k)
-      = (fun x => ((range m).prod (fun i => P (Fin.ofNat' i n_pos) x)).coeff k) := by
+    Continuous fun x => ((univ : Finset (Fin m)).prod (fun i => P (@Fin.ofNat' n (NeZero.of_gt n_pos) i) x)).coeff k := by
+  have : (fun x => ((univ : Finset (Fin m)).prod (fun i => P (@Fin.ofNat' n (NeZero.of_gt n_pos) i) x)).coeff k)
+      = (fun x => ((range m).prod (fun i => P (@Fin.ofNat' n (NeZero.of_gt n_pos) i) x)).coeff k) := by
     ext x
     rw [← prod_univ_Fin_eq_prod_range]
   rw [this]
   induction' m with m ih generalizing k
   · simp [coeff_one, continuous_const]
-  · have : (fun x => ((range m.succ).prod fun i => P (Fin.ofNat' i n_pos) x).coeff k)
-        = (fun x => _) := by
+  · have : (fun x => (∏ i ∈ range (m + 1), P (@Fin.ofNat' n (NeZero.of_gt n_pos) i) x).coeff k)
+        = (fun x => ∑ μ ∈ antidiagonal k, (P (@Fin.ofNat' n (NeZero.of_gt n_pos) m) x).coeff μ.1
+        * (∏ i ∈ range m, P (@Fin.ofNat' n (NeZero.of_gt n_pos) i) x).coeff μ.2) := by
       ext x
       rw [range_succ, prod_insert not_mem_range_self, coeff_mul]
     rw [this]
     refine continuous_finset_sum _ (fun μ _ => (hP _ _).mul ?_)
     by_cases mz : m = 0
-    · have : (fun x => ((range m).prod fun i => P (Fin.ofNat' i n_pos) x).coeff μ.2)
+    · have : (fun x => ((range m).prod fun i => P (@Fin.ofNat' n (NeZero.of_gt n_pos) i) x).coeff μ.2)
           = (fun x => if μ.2 = 0 then 1 else 0) := by
         ext x
         simp [mz, coeff_one]
@@ -301,18 +315,20 @@ lemma continuous_coeff_prod (m : ℕ) (hm : 0 < m) (hmn : m ≤ n) (k : ℕ)
     · exact ih (pos_iff_ne_zero.2 mz) (lt_of_lt_of_le (Nat.lt_succ_self m) hmn).le
         μ.2 (by ext x; rw [← prod_univ_Fin_eq_prod_range])
 
+include n_pos in
 lemma continuous_coeff_prod' (k : ℕ) (P : Fin n → E n → ℝ[X])
     (hP : ∀ i k', Continuous (fun x => (P i x).coeff k')) :
     Continuous fun x => ((univ : Finset (Fin n)).prod (fun i => P i x)).coeff k := by
   have : (fun x => (univ.prod (fun i => P i x)).coeff k)
       = (fun x => ((univ : Finset (Fin n)).prod
-      (fun i => P (Fin.ofNat' i n_pos) x)).coeff k) :=
+      (fun i => P (@Fin.ofNat' n (NeZero.of_gt n_pos) i) x)).coeff k) :=
     (funext fun x => congrArg (fun p => coeff p k)
-      (congrArg _ (funext fun i => (congrArg (fun j => P j x) (by rw [ofNat'_val])))))
+      (congrArg _ (funext fun i => (congrArg (fun j => P j x) (by rw [ofNat'_val _ n_pos])))))
   rw [this]
-  exact continuous_coeff_prod _ _ _ n_pos le_rfl _ _ hP
+  exact continuous_coeff_prod _ n_pos _ n_pos le_rfl _ _ hP
 
 /- det (f' t x) est polynomial en t et les coefficients sont continus en x -/
+include n_pos vContDiff in
 lemma f't_det_poly : ∃ P : E n → Polynomial ℝ,
     (∀ x : E n, (P x).natDegree ≤ n)
     ∧ (∀ x : E n, (P x).coeff 0 = 1)
@@ -431,6 +447,7 @@ lemma useless_lemma (g : ℕ → ℝ) (n : ℕ) :
     (range (n + 1)).sum g = (range (1 + n)).sum g := by
   rw [add_comm]
 
+include AComp in
 lemma bound_poly (P : E n → Polynomial ℝ) (hdeg : ∀ x, (P x).natDegree ≤ n)
     (h0 : ∀ x, (P x).coeff 0 = 1) (hcont : ∀ k, Continuous (fun x => (P x).coeff k)) :
     ∃ M, ∀ t : ℝ, ∀ x : A,
@@ -454,6 +471,7 @@ lemma bound_poly (P : E n → Polynomial ℝ) (hdeg : ∀ x, (P x).natDegree ≤
   exact add_le_add_left (sum_le_sum (this t x)) _
 
 /- det (f' t x) > 0 pour t assez petit -/
+include n_pos vContDiff AComp in
 lemma zero_lt_det_f't : ∀ᶠ t in 𝓝 0, ∀ x : A, 0 < (f' t x).det := by
   have ⟨P, hP⟩ := @f't_det_poly n n_pos v vContDiff
   have ⟨M, hM⟩ := bound_poly n AComp P hP.1 hP.2.1 hP.2.2.2
@@ -462,6 +480,7 @@ lemma zero_lt_det_f't : ∀ᶠ t in 𝓝 0, ∀ x : A, 0 < (f' t x).det := by
   exact lt_of_lt_of_le ht (hM t x)
 
 /- |det (f' t x)| est polynomial en t et les coefficients sont continus en x -/
+include n_pos vContDiff AComp in
 lemma abs_det_f't_poly : ∃ P : E n → Polynomial ℝ,
     (∀ x : E n, (P x).natDegree ≤ n)
     ∧ (∀ᶠ t in 𝓝 0, ∀ x : A, |(f' t x).det| = (P x).eval t)
@@ -471,6 +490,7 @@ lemma abs_det_f't_poly : ∃ P : E n → Polynomial ℝ,
   filter_upwards [@zero_lt_det_f't n n_pos v vContDiff A AComp] with t hpos x
   rw [abs_of_pos (hpos x), hP.2.2.1 t]
 
+include vContDiff in
 lemma cont_abs_det_f't (t : ℝ) : Continuous (fun x => |(f' t x).det|) :=
   continuous_abs.comp (ContinuousLinearMap.continuous_det.comp (continuous_const.add
     (continuous_const.smul (vContDiff.continuous_fderiv (by rfl)))))
@@ -480,6 +500,7 @@ lemma nonneg_ae_abs_det_f't (t : ℝ) : 0 ≤ᵐ[volume.restrict A] fun x => |(f
   simp
 
 /- le volume de (f t)''(A) est polynomial en t -/
+include n_pos vContDiff AComp in
 lemma vol_ft_A_poly : ∃ P : Polynomial ℝ, ∀ᶠ t in 𝓝 0,
     (volume ((f t) '' A)).toReal = (P.eval t) := by
   let ⟨P, hP⟩ := @abs_det_f't_poly n n_pos v vContDiff A AComp
@@ -494,7 +515,7 @@ lemma vol_ft_A_poly : ∃ P : Polynomial ℝ, ∀ᶠ t in 𝓝 0,
     simp [eval_finset_sum]
   have integrable_coeff (i : ℕ) : Integrable (fun x => (P x).coeff i * t ^ i) (volume.restrict A) :=
     ContinuousOn.integrableOn_compact AComp (Continuous.continuousOn ((hP.2.2 i).smul continuous_const))
-  rw [set_integral_congr (meas_A n AComp) this, integral_finset_sum _ (fun i _ => integrable_coeff i)]
+  rw [setIntegral_congr (meas_A n AComp) this, integral_finset_sum _ (fun i _ => integrable_coeff i)]
   have : (fun i => ∫ x in A, (P x).coeff i * t ^ i) = (fun i => (∫ x in A, (P x).coeff i) * t ^ i) := by
     ext i
     show ∫ x in A, (P x).coeff i • t ^ i = (∫ x in A, (P x).coeff i) • t ^ i
@@ -513,10 +534,12 @@ open Set
   -- LinearEquiv.toContinuousLinearEquiv (LinearMap.equivOfDDetNeZero (f' t x) )
   sorry -/
 
+include hv in
 lemma inner_self_v_eq_zero_of_norm_one (t : ℝ) (x : E n) :
-    ⟪x, t • v x⟫_ℝ = 0 := by
+    ⟪x, t • v x⟫ = 0 := by
   rw [inner_smul_right, hv.isTang x, mul_zero]
 
+include hv vUnit in
 lemma ft_mem_sphere_of_mem_sphere (t : ℝ) (x : unitSphere n) :
     f t x ∈ Metric.sphere 0 (Real.sqrt (1 + t*t)) := by
   rw [mem_sphere_iff_norm, sub_zero, ← Real.sqrt_mul_self (norm_nonneg _),
@@ -524,32 +547,34 @@ lemma ft_mem_sphere_of_mem_sphere (t : ℝ) (x : unitSphere n) :
     (inner_self_v_eq_zero_of_norm_one n hv t x)]
   simp [mem_sphere_zero_iff_norm.1 (Subtype.mem x), norm_smul, vUnit x]
 
+include hv vUnit in
 lemma image_ft_subset_sphere (t : ℝ) :
     (f t) '' (unitSphere n) ⊆ Metric.sphere 0 (Real.sqrt (1 + t*t)) :=
   fun y ⟨x, hx, hxy⟩ => by
     rw [← hxy]
     exact @ft_mem_sphere_of_mem_sphere _ _ hv vUnit t ⟨x, hx⟩
 
+include hv vUnit in
 lemma ft_mapsTo_sphere (t : ℝ) : MapsTo (f t) (unitSphere n)
     (Metric.sphere 0 (Real.sqrt (1 + t * t))) :=
   fun x hx => @ft_mem_sphere_of_mem_sphere n _ hv vUnit t ⟨x, hx⟩
 
-lemma rank_EuclideanSpace : FiniteDimensional.finrank ℝ (E n) = n := by
-  rw [finrank_euclideanSpace, Fintype.card_fin]
-
 variable (hn : 1 < n) (vContDiff) (vUnit)
 
+include hn in
 lemma one_lt_rank_EuclideanSpace : 1 < Module.rank ℝ (E n) := by
-  apply FiniteDimensional.one_lt_rank_of_one_lt_finrank
-  rw [rank_EuclideanSpace]
-  linarith
+  apply Module.lt_rank_of_lt_finrank
+  rw [finrank_euclideanSpace, Fintype.card_fin]
+  exact hn
 
 local notation "f_restr" =>
   fun (t : ℝ) ↦ restrictPreimage (Metric.sphere 0 (Real.sqrt (1 + t * t))) (f t)
 
+include vContDiff in
 lemma continuous_ft_restr (t : ℝ) : Continuous (f_restr t) :=
   (@continuous_ft n _ vContDiff t).restrict _
 
+include hv vUnit in
 lemma ft_preimage_sphere (t : ℝ) :
     (f t) ⁻¹' (Metric.sphere 0 (Real.sqrt (1 + t * t))) = unitSphere n := by
   ext x
@@ -585,22 +610,22 @@ lemma preimage_restrict {α β : Type} (s : Set α) (g : α → β) (t : Set β)
     (image_preimage_subset _ _))
     (fun x hx => ⟨⟨x, hx.1⟩, ⟨mem_preimage.2 hx.2, rfl⟩⟩)
 
+include n_pos vContDiff in
 lemma isOpenMap_ft : ∀ᶠ t in 𝓝 0, IsOpenMap (restrict (Metric.ball 0 2) (f t)) := by
   filter_upwards [@zero_lt_det_f't n n_pos _ vContDiff _
     (ProperSpace.isCompact_closedBall 0 2)] with t ht
   refine isOpenMap_iff_nhds_le.2 (fun ⟨x, hx⟩ => ?_)
   rw [restrict_apply, restrict_eq, ← Filter.map_map,
-    ← @HasStrictFDerivAt.map_nhds_eq_of_equiv ℝ _ _ _ _ _ _ _ _ _
+    ← @HasStrictFDerivAt.map_nhds_eq_of_equiv ℝ _ _ _ _ _ _ _ _
     ((f' t x).equivOfDetNeZero (ht ⟨x, mem_closedBall_zero_iff.2
-    (le_of_lt (mem_ball_zero_iff.1 hx))⟩).ne.symm).toContinuousLinearEquiv _
+    (le_of_lt (mem_ball_zero_iff.1 hx))⟩).ne.symm).toContinuousLinearEquiv _ _
     (@ftStrictDeriv n _ vContDiff t x)]
-  /- have : Filter.map Subtype.val (𝓝 (⟨x, hx⟩ : Metric.ball (0 : E n) 2)) = 𝓝 x := by
-    apply eq_of_le_of_le -/
-  exact Filter.le_map (fun s hs => Filter.mem_map.2 ((𝓝 x).sets_of_superset
-    (nhds_of_nhdsWithin_of_nhds (mem_nhds_iff.2 ⟨(Metric.ball 0 2),
-    ⟨subset_rfl, ⟨Metric.isOpen_ball, hx⟩⟩⟩) (preimage_coe_mem_nhds_subtype.1
-    (Filter.mem_map.1 hs))) (subset_preimage_image _ _)))
+  have : Filter.map Subtype.val (𝓝 (⟨x, hx⟩ : Metric.ball (0 : E n) 2)) = 𝓝 x :=
+    eq_of_le_of_le continuous_subtype_val.continuousAt.tendsto
+      (isOpenMap_iff_nhds_le.1 Metric.isOpen_ball.isOpenMap_subtype_val ⟨x, hx⟩)
+  rw [this]
 
+include hv vUnit in
 lemma subtype_val_preimage_ball_eq_sphere (t : ℝ) :
     (univ : Set ((f t) ⁻¹' (Metric.sphere 0 (Real.sqrt (1 + t * t)))))
     = (Subtype.val ⁻¹' (Metric.ball (0 : E n) 2)) := by
@@ -610,6 +635,7 @@ lemma subtype_val_preimage_ball_eq_sphere (t : ℝ) :
     ⟨fun _ => mem_ball_zero_iff.2 (by rw [mem_sphere_zero_iff_norm.1 hx]; linarith),
     fun _ => mem_univ _⟩
 
+include n_pos hv vContDiff vUnit in
 /- f t : unitSphere n → Metric.sphere 0 (sqrt (1 + t*t)) est ouverte pour t assez petit -/
 lemma isOpenMap_ft_restr : ∀ᶠ t in 𝓝 0, IsOpenMap (f_restr t) := by
   filter_upwards [@isOpenMap_ft n n_pos v vContDiff] with t ht
@@ -620,9 +646,11 @@ lemma isOpenMap_ft_restr : ∀ᶠ t in 𝓝 0, IsOpenMap (f_restr t) := by
   exact continuous_subtype_val.isOpen_preimage _
     (ht _ (continuous_subtype_val.isOpen_preimage _ hV))
 
+include hn in
 lemma isConnected_sphere_E (t : ℝ) : IsConnected (Metric.sphere (0 : E n) (Real.sqrt (1 + t*t))) :=
   isConnected_sphere (one_lt_rank_EuclideanSpace n hn) 0 (Real.sqrt_nonneg (1 + t*t))
 
+include hv vUnit in
 lemma image_ft_eq_image_ft_restr (t : ℝ) :
     (f t) '' (unitSphere n) = range (f_restr t) := by
   ext y
@@ -637,13 +665,16 @@ lemma image_ft_eq_image_ft_restr (t : ℝ) :
   exact ⟨mem_range.2 ⟨⟨x, by rwa [mem_preimage, hxy]⟩,
     Subtype.val_injective (by simp [hxy])⟩, by simp⟩
 
+include n_pos hv vContDiff vUnit in
 lemma isOpen_image_ft_restr : ∀ᶠ t in 𝓝 0, IsOpen (range (f_restr t)) := by
   filter_upwards [isOpenMap_ft_restr n n_pos hv vContDiff vUnit] with t ht
   exact ht.isOpen_range
 
+include vContDiff in
 lemma isClosed_image_ft (t : ℝ) : IsClosed ((f t) '' (unitSphere n)) :=
   ((isCompact_sphere _ _).image (@continuous_ft n v vContDiff t)).isClosed
 
+include hv vContDiff vUnit in
 lemma isClosed_image_ft_restr (t : ℝ) : IsClosed (range (f_restr t)) :=
   (@isCompact_range _ _ _ _ (instCompactPreimageSphere n hv vUnit t) _
   (continuous_ft_restr n vContDiff t)).isClosed
@@ -658,6 +689,7 @@ lemma image_preimage_eq_self {α : Type} (s : Set α) :
 lemma useless_lemma2 {α : Type} {s s' t : Set α} (h : s = s') (h' : s ⊆ t) : s' ⊆ t := by
   rwa [← h]
 
+include n_pos hn hv vContDiff vUnit in
 lemma image_ft_eq_sphere : ∀ᶠ t in 𝓝 0,
     (f t) '' (unitSphere n) = Metric.sphere 0 (Real.sqrt (1 + t*t)) := by
   filter_upwards [isOpen_image_ft_restr n n_pos hv vContDiff vUnit] with t ht
@@ -701,8 +733,12 @@ lemma not_sqrt_one_add_sq_eq_poly :
   let ⟨a, b, hab⟩ := (exists_eq_X_add_C_of_natDegree_le_one (by rw [P_natDegree_eq_one]) :
     ∃ a b, P = C a * X + C b)
   rw [hab, C_mul_X_add_C_mul_self] at eq_P_sq
-  have h0 : coeff (1 + X * X) 0 = coeff _ 0 := by rw [eq_P_sq]
-  have h1 : coeff (1 + X * X) 1 = coeff _ 1 := by rw [eq_P_sq]
+  have h0 : coeff (1 + X * X) 0
+      = coeff (C (a * a) * X * X + C (2 * a * b) * X + C (b * b)) 0 := by
+    rw [eq_P_sq]
+  have h1 : coeff (1 + X * X) 1
+      = coeff (C (a * a) * X * X + C (2 * a * b) * X + C (b * b)) 1 := by
+    rw [eq_P_sq]
   simp at h0
   simp at h1
   rw [← C_1, coeff_C_ne_zero (one_ne_zero)] at h1
@@ -712,6 +748,7 @@ lemma not_sqrt_one_add_sq_eq_poly :
   rw [hab, a0, C_0, zero_mul, zero_add, natDegree_C] at P_natDegree_eq_one
   exact zero_ne_one P_natDegree_eq_one
 
+include odd_n in
 lemma not_one_add_sq_pow_n_div_two_eq_poly :
     ¬ (∃ P : Polynomial ℝ, ∀ t, (1 + t * t) ^ (n / 2 : ℝ) = P.eval t) := by
   let ⟨m, hm⟩ := odd_n
@@ -731,13 +768,13 @@ lemma not_one_add_sq_pow_n_div_two_eq_poly :
       ring_nf
     have derivative_coeff_zero : (derivative P).coeff 0 = 0 := by
       simp [coeff_zero_eq_eval_zero, ← this]
+    have X_mul_divX_derivative : derivative P = X * divX (derivative P) := by
+      rw [← add_zero (_ * _), ← C_0, ← derivative_coeff_zero, X_mul_divX_add]
+    rw [X_mul_divX_derivative] at this
     apply ih
     use C (1 / (2 * m + 3) : ℝ) * divX (derivative P)
     intro t
     rw [eval_mul, eval_C]
-    by_cases ht : t = 0
-    · simp [ht, ← coeff_zero_eq_eval_zero, coeff_derivative]
-      sorry
     sorry
 
 theorem HairyBallDiff : ∃ x, v x = 0 := by

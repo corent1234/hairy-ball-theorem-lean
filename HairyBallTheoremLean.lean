@@ -535,7 +535,9 @@ lemma im_ft : ∀ᶠ t in 𝓝 0,
   sorry
 
 theorem HairyBallDiff : ∃ x, v x = 0 := by
-  sorry
+  use 0
+  rw [← norm_eq_zero]
+  rw [vUnit, norm_zero]
 
 end
 

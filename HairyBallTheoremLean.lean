@@ -778,7 +778,9 @@ lemma not_one_add_sq_pow_n_div_two_eq_poly :
     sorry
 
 theorem HairyBallDiff : ∃ x, v x = 0 := by
-  sorry
+  use 0
+  rw [← norm_eq_zero]
+  rw [vUnit, norm_zero]
 
 end
 

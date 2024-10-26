@@ -20,6 +20,7 @@ import Mathlib.LinearAlgebra.Dimension.Finrank
 set_option autoImplicit false
 
 open scoped RealInnerProductSpace
+open scoped BigOperators
 
 
 
@@ -37,20 +38,146 @@ structure IsExtensionOfVectorFieldOnSn (v : E n → E n) where
 
 section Lipschitz_section
 
-lemma ContDiffOn.LocallyLipschitzOn {𝕂 : Type} [RCLike 𝕂] {E' : Type} [NormedAddCommGroup E']
+lemma ContDiffOn.locallyLipschitzOn_of_isOpen {𝕂 : Type} [RCLike 𝕂] {E' : Type} [NormedAddCommGroup E']
     [NormedSpace 𝕂 E'] {F' : Type} [NormedAddCommGroup F'] [NormedSpace 𝕂 F'] {f : E' → F'}
-    {s t : Set E'} (hf : ContDiffOn 𝕂 1 f s) (hs : s ∈ nhdsSet t) :
-    LocallyLipschitzOn t f := by
+    {s : Set E'} (hf : ContDiffOn 𝕂 1 f s) (hs : IsOpen s) :
+    LocallyLipschitzOn s f := by
   intro x hx
-  obtain ⟨K, t', ht', hK⟩ := (hf.contDiffAt (nhds_le_nhdsSet hx hs)).exists_lipschitzOnWith
+  obtain ⟨K, t', ht', hK⟩ := (hf.contDiffAt (hs.mem_nhds hx)).exists_lipschitzOnWith
   exact ⟨K, t', mem_nhdsWithin_of_mem_nhds ht', hK⟩
 
-lemma LocallyLipschitzOn.lipshitzOn_of_isCompact {𝕂 : Type} [RCLike 𝕂] {E' : Type}
+lemma ENNReal.ofReal_ne_zero {p : ℝ} : ENNReal.ofReal p ≠ 0 ↔ 0 < p := by
+  rw [← not_le, not_iff_not, ENNReal.ofReal_eq_zero]
+
+/- lemma LocallyLipschitz.lipshitzWith_of_CompactSpace {𝕂 : Type} [RCLike 𝕂] {E' : Type}
+    [NormedAddCommGroup E'] [NormedSpace 𝕂 E'] [CompactSpace E'] {F' : Type}
+    [NormedAddCommGroup F'] [NormedSpace 𝕂 F'] {f : E' → F'} (hf : LocallyLipschitz f) :
+    ∃ (K : NNReal), LipschitzWith K f := by
+  have f_continuous : Continuous f := hf.continuous
+  choose K s hK using hf
+  obtain ⟨t, ht⟩ := CompactSpace.elim_nhds_subcover (interior ∘ s)
+    (fun x => interior_mem_nhds.2 (hK x).1)
+  by_cases t_empty : t = ∅
+  · simp only [t_empty, Finset.not_mem_empty, Function.comp_apply, Set.iUnion_of_empty,
+      Set.iUnion_empty, Set.top_eq_univ] at ht
+    exact ⟨0, lipschitzOnWith_univ.1 (by simp [← ht])⟩
+  have ht' : Set.univ ⊆ Set.iUnion (fun (x : t) => interior (s x)) := by
+    apply subset_of_eq
+    rw [← Set.top_eq_univ, ← ht]
+    exact (Set.iUnion_subtype (Membership.mem t) fun x => interior (s x)).symm
+  let ⟨ε', hε', hε's⟩ := lebesgue_number_lemma_of_metric CompactSpace.isCompact_univ
+    (fun (x : t) => isOpen_interior) ht'
+  let K' : ℝ := (t.image K).max' ((Finset.nonempty_iff_ne_empty.2 t_empty).image _)
+  let K'' := (Metric.diam (Set.range f)) / ε'
+  by_cases hK'' : K'' = 0
+  · have : Metric.diam (Set.range f) = 0 := by
+      rwa [← zero_mul ε', ← div_eq_iff hε'.ne.symm]
+    refine ⟨0, fun x y => ?_⟩
+    rw [ENNReal.coe_zero, zero_mul, nonpos_iff_eq_zero, edist_eq_zero, ← dist_le_zero,
+      ← zero_mul ε', ← hK'', div_mul_cancel₀ _ hε'.ne.symm]
+    exact Metric.dist_le_diam_of_mem (isCompact_range f_continuous).isBounded
+      (Set.mem_range_self _) (Set.mem_range_self _)
+  have K''_pos : 0 < K'' := lt_of_le_of_ne (div_nonneg Metric.diam_nonneg hε'.le) (fun h => hK'' h.symm)
+  have max_pos : 0 < max K' K'' := lt_max_of_lt_right K''_pos
+  refine ⟨⟨max K' K'', le_max_of_le_left (NNReal.coe_nonneg _)⟩, fun x y => ?_⟩
+  by_cases hxy : edist x y < ENNReal.ofReal ε'
+  · by_cases hxy' : x = y
+    · simp [hxy']
+    obtain ⟨i, hi⟩ := hε's x (Set.mem_univ _)
+    have K_le_max : K i ≤ max K' K'' :=
+      le_trans (Finset.le_max' (Finset.image K t) (K i) (Finset.mem_image.2 ⟨i, i.2, rfl⟩)) (le_max_left _ _)
+    refine le_trans ?_ ((ENNReal.mul_le_mul_right (edist_pos.2 hxy').ne.symm
+      (lt_of_lt_of_le hxy le_top).ne).2 (ENNReal.coe_le_coe.2 K_le_max))
+    exact (hK i).2 (interior_subset (hi (Metric.mem_ball_self hε')))
+      (interior_subset (hi (Metric.mem_ball'.2 (edist_lt_ofReal.1 hxy))))
+  · have x_ne_y : x ≠ y :=
+      edist_pos.1 (lt_of_lt_of_le (ENNReal.ofReal_pos.2 hε') (not_lt.1 hxy))
+    by_cases hxy' : edist x y = ⊤
+    · rw [hxy', ENNReal.mul_top (by rwa [← ENNReal.ofReal_coe_nnreal, NNReal.coe_mk, ENNReal.ofReal_ne_zero])]
+      exact le_top
+    refine le_trans ?_ ((ENNReal.mul_le_mul_right (edist_pos.2 x_ne_y).ne.symm hxy').2
+      (ENNReal.ofReal_le_of_le_toReal (le_max_right K' K'')))
+    refine le_trans ?_ ((ENNReal.mul_le_mul_left (ENNReal.ofReal_ne_zero.2 K''_pos)
+      ENNReal.ofReal_ne_top).2 (not_lt.1 hxy))
+    rw [← ENNReal.ofReal_mul K''_pos.le, div_mul_cancel₀ _ hε'.ne.symm, edist_dist]
+    exact ENNReal.ofReal_le_ofReal (Metric.dist_le_diam_of_mem
+      (isCompact_range f_continuous).isBounded (Set.mem_range_self _) (Set.mem_range_self _)) -/
+
+lemma LocallyLipschitzOn.lipshitzOnWith_of_isCompact {𝕂 : Type} [RCLike 𝕂] {E' : Type}
     [NormedAddCommGroup E'] [NormedSpace 𝕂 E'] {F' : Type} [NormedAddCommGroup F']
-    [NormedSpace 𝕂 F'] {f : E' → F'} {s : Set E'} (hf : LocallyLipschitzOn s f)
-    (hs : IsCompact s) :
-    ∃ (K : NNReal), LipschitzOnWith K f s := by
-  sorry
+    [NormedSpace 𝕂 F'] {f : E' → F'} {s t : Set E'} (hf : LocallyLipschitzOn t f)
+    (hs : IsCompact s) (ht : t ∈ nhdsSet s) :
+    ∃ K, LipschitzOnWith K f s := by
+  have f_continuousOn : ContinuousOn f s :=
+    hf.continuousOn.mono (subset_of_mem_nhdsSet ht)
+  choose K s' hK using hf
+  obtain ⟨t', ht'⟩ := hs.elim_nhds_subcover' (fun x hx => interior (s' (subset_of_mem_nhdsSet ht hx)))
+    (fun x hx => interior_mem_nhds.2 (nhds_of_nhdsWithin_of_nhds (nhds_le_nhdsSet hx ht)
+    (hK (subset_of_mem_nhdsSet ht hx)).1))
+  by_cases t'_empty : t' = ∅
+  · simp only [t'_empty, Finset.not_mem_empty, Set.iUnion_of_empty, Set.iUnion_empty,
+      Set.subset_empty_iff] at ht'
+    rw [ht']
+    exact ⟨0, lipschitzOnWith_empty _ _⟩
+  have ht'' : s ⊆ Set.iUnion (fun (x : t') => interior (s' (subset_of_mem_nhdsSet ht x.1.2))) := by
+    rwa [Set.iUnion_subtype]
+  let ⟨ε', hε', hε's⟩ := lebesgue_number_lemma_of_metric hs
+    (fun (x : t') => isOpen_interior) ht''
+  let K' : ℝ := (t'.image (fun x => K (subset_of_mem_nhdsSet ht x.2))).max'
+    ((Finset.nonempty_iff_ne_empty.2 t'_empty).image _)
+  let K'' := (Metric.diam (f '' s)) / ε'
+  by_cases hK'' : K'' = 0
+  · have : Metric.diam (f '' s) = 0 := by
+      rwa [← zero_mul ε', ← div_eq_iff hε'.ne.symm]
+    refine ⟨0, fun x hx y hy => ?_⟩
+    rw [ENNReal.coe_zero, zero_mul, nonpos_iff_eq_zero, edist_eq_zero, ← dist_le_zero,
+      ← zero_mul ε', ← hK'', div_mul_cancel₀ _ hε'.ne.symm]
+    exact Metric.dist_le_diam_of_mem (hs.image_of_continuousOn f_continuousOn).isBounded
+      (Set.mem_image_of_mem _ hx) (Set.mem_image_of_mem _ hy)
+  have K''_pos : 0 < K'' := lt_of_le_of_ne (div_nonneg Metric.diam_nonneg hε'.le) (fun h => hK'' h.symm)
+  have max_pos : 0 < max K' K'' := lt_max_of_lt_right K''_pos
+  refine ⟨⟨max K' K'', le_max_of_le_left (NNReal.coe_nonneg _)⟩, fun x hx y hy => ?_⟩
+  by_cases hxy : edist x y < ENNReal.ofReal ε'
+  · by_cases hxy' : x = y
+    · simp [hxy']
+    obtain ⟨i, hi⟩ := hε's x hx
+    have hit : i.1.1 ∈ t := subset_of_mem_nhdsSet ht i.1.2
+    have K_le_max : K hit ≤ max K' K'' := by
+      refine le_trans (Finset.le_max' _ (K hit) (Finset.mem_image.2 ?_)) (le_max_left _ _)
+      exact ⟨i, i.2, rfl⟩
+    refine le_trans ?_ ((ENNReal.mul_le_mul_right (edist_pos.2 hxy').ne.symm
+      (lt_of_lt_of_le hxy le_top).ne).2 (ENNReal.coe_le_coe.2 K_le_max))
+    exact (hK hit).2 (interior_subset (hi (Metric.mem_ball_self hε')))
+      (interior_subset (hi (Metric.mem_ball'.2 (edist_lt_ofReal.1 hxy))))
+  · have x_ne_y : x ≠ y :=
+      edist_pos.1 (lt_of_lt_of_le (ENNReal.ofReal_pos.2 hε') (not_lt.1 hxy))
+    by_cases hxy' : edist x y = ⊤
+    · rw [hxy', ENNReal.mul_top (by rwa [← ENNReal.ofReal_coe_nnreal, NNReal.coe_mk, ENNReal.ofReal_ne_zero])]
+      exact le_top
+    refine le_trans ?_ ((ENNReal.mul_le_mul_right (edist_pos.2 x_ne_y).ne.symm hxy').2
+      (ENNReal.ofReal_le_of_le_toReal (le_max_right K' K'')))
+    refine le_trans ?_ ((ENNReal.mul_le_mul_left (ENNReal.ofReal_ne_zero.2 K''_pos)
+      ENNReal.ofReal_ne_top).2 (not_lt.1 hxy))
+    rw [← ENNReal.ofReal_mul K''_pos.le, div_mul_cancel₀ _ hε'.ne.symm, edist_dist]
+    exact ENNReal.ofReal_le_ofReal (Metric.dist_le_diam_of_mem
+      (hs.image_of_continuousOn f_continuousOn).isBounded
+      (Set.mem_image_of_mem _ hx) (Set.mem_image_of_mem _ hy))
+
+lemma LocallyLipschitz.lipshitzWith_of_CompactSpace {𝕂 : Type} [RCLike 𝕂] {E' : Type}
+    [NormedAddCommGroup E'] [NormedSpace 𝕂 E'] [CompactSpace E'] {F' : Type}
+    [NormedAddCommGroup F'] [NormedSpace 𝕂 F'] {f : E' → F'} (hf : LocallyLipschitz f) :
+    ∃ K, LipschitzWith K f := by
+  obtain ⟨K, hK⟩ := hf.locallyLipschitzOn.lipshitzOnWith_of_isCompact (𝕂 := 𝕂)
+    isCompact_univ Filter.univ_mem
+  exact ⟨K, lipschitzOnWith_univ.1 hK⟩
+
+lemma ContDiffOn.lipschitzOnWith_of_isCompact {𝕂 : Type} [RCLike 𝕂] {E' : Type}
+    [NormedAddCommGroup E'] [NormedSpace 𝕂 E'] {F' : Type} [NormedAddCommGroup F']
+    [NormedSpace 𝕂 F'] {f : E' → F'} {s t : Set E'} (hf : ContDiffOn 𝕂 1 f s)
+    (ht : IsCompact t) (hs : s ∈ nhdsSet t) :
+    ∃ K, LipschitzOnWith K f t :=
+  ((hf.mono interior_subset).locallyLipschitzOn_of_isOpen (isOpen_interior)).lipshitzOnWith_of_isCompact
+    (𝕂 := 𝕂) ht (isOpen_interior.mem_nhdsSet.2 (subset_interior_iff_mem_nhdsSet.2 hs))
 
 end Lipschitz_section
 

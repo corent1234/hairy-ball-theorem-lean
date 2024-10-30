@@ -2,6 +2,7 @@ import Mathlib.Topology.MetricSpace.Pseudo.Basic
 import Mathlib.Topology.Basic
 import Mathlib.Topology.Category.CompHaus.Basic
 import Mathlib.Topology.ContinuousMap.Polynomial
+import Mathlib.Topology.ContinuousMap.StoneWeierstrass
 import Mathlib.Analysis.InnerProductSpace.Basic
 import Mathlib.Analysis.InnerProductSpace.PiL2
 import Mathlib.Analysis.InnerProductSpace.EuclideanDist
@@ -182,26 +183,71 @@ lemma ContDiffOn.lipschitzOnWith_of_isCompact {𝕂 : Type} [RCLike 𝕂] {E' : 
 end Lipschitz_section
 
 
+section other_lemmas
+
+lemma continuousOn_if_const {α : Type}  {β : Type}  [TopologicalSpace α]
+    [TopologicalSpace β]  (p : Prop) {s : Set α} {f : α → β}  {g : α → β} [Decidable p]
+    (hf : p → ContinuousOn f s)  (hg : ¬p → ContinuousOn g s) :
+    ContinuousOn (fun a => if p then f a else g a) s := by
+  split_ifs with h
+  exacts [hf h, hg h]
+
+end other_lemmas
+
+
 
 section
 
 variable (v : E n → E n) (hv : IsExtensionOfVectorFieldOnSn n v)
-  {vContDiff : ContDiff ℝ 1 v} -- ContDiffOn ℝ 1 v A ?
   {vUnit : ∀ x : E n, ‖v x‖ = ‖x‖}
   {A : Set (E n)} (AComp : IsCompact A)
+  {s : Set (E n)} (hs : s ∈ nhdsSet A) (s_isOpen : IsOpen s)
+  (vContDiff : ContDiffOn ℝ 1 v s)
 
 local notation "f" => fun (t : ℝ) (x : E n) ↦ x + t • (v x)
+
+local notation "crown" => fun (a b : ℝ) =>
+  (Metric.ball (0 : E n) b) \ (Metric.closedBall 0 a)
+
+local notation "closedCrown" => fun (a b : ℝ) =>
+  (Metric.closedBall (0 : E n) b) \ (Metric.ball 0 a)
 
 instance instComp : CompactSpace (A : Type) :=
   isCompact_iff_compactSpace.1 AComp
 
+
+section crown_section
+
+open Metric Set
+
+variable {n}
+
+lemma mem_crown {a b : ℝ} {x : E n} : x ∈ crown a b ↔ a < ‖x‖ ∧ ‖x‖ < b := by
+  rw [mem_diff, mem_ball_zero_iff, mem_closedBall_zero_iff, not_le, and_comm]
+
+lemma isOpen_crown (a b : ℝ) : IsOpen (crown a b) :=
+  isOpen_ball.sdiff isClosed_ball
+
+lemma isCompact_closedCrown (a b : ℝ) : IsCompact (closedCrown a b) :=
+  (ProperSpace.isCompact_closedBall _ _).diff isOpen_ball
+
+lemma crown_subset_closedCrown {a b : ℝ} : crown a b ⊆ closedCrown a b :=
+  fun _ ⟨hxb, hxa⟩ => ⟨ball_subset_closedBall hxb,
+    (compl_subset_compl.2 ball_subset_closedBall) hxa⟩
+
+lemma measurableSet_closedCrown {a b : ℝ} : MeasurableSet (closedCrown a b) :=
+  measurableSet_closedBall.diff measurableSet_ball
+
+end crown_section
+
+
 open Topology
 
-variable {v}
+variable {n} {v} (hs_crown : s ∈ nhdsSet ((Metric.closedBall (0 : E n) 2) \ (Metric.ball 0 2⁻¹)))
 
-include vContDiff in
+include hv in
 lemma continuous_ft (t : ℝ) : Continuous (f t) :=
-  continuous_id.add (continuous_const.smul vContDiff.continuous)
+  continuous_id.add (continuous_const.smul hv.isCont)
 
 include hv in
 lemma measurable_ft (t : ℝ) : Measurable (f t) :=
@@ -216,7 +262,8 @@ lemma vLip' : ∃ c : NNReal, LipschitzOnWith c v A := by
 /- v est lipschitzienne sur A -/
 include AComp vContDiff in
 lemma vLip : ∃ c, LipschitzOnWith c v A := by
-  let ⟨r, hr⟩ := AComp.isBounded.subset_ball 0
+  sorry
+  /- let ⟨r, hr⟩ := AComp.isBounded.subset_ball 0
   let ⟨c, hc⟩ := (Euclidean.isCompact_closedBall (x := (0 : E n))
     (r := |r|)).exists_bound_of_continuousOn ((vContDiff.continuous_fderiv (le_refl 1)).continuousOn)
   use ⟨c, le_trans (norm_nonneg _) (hc 0 (Metric.mem_closedBall_self (abs_nonneg r)))⟩
@@ -230,7 +277,7 @@ lemma vLip : ∃ c, LipschitzOnWith c v A := by
     sorry
   rw [Euclidean.closedBall_eq_preimage] at hc
   simp at hc
-  sorry
+  sorry -/
 
 lemma ftx_eq_fty (t : ℝ) {x y : E n} (h : f t x = f t y) :
     x - y = t • (v y - v x) := by
@@ -271,20 +318,21 @@ lemma injOn_A_ft : ∀ᶠ t in 𝓝 0, A.InjOn (f t) := by
   sorry
 
 /- différentielle de f t en x -/
-local notation "f'" =>
-  fun (t : ℝ) (x : E n) ↦ (ContinuousLinearMap.id ℝ (E n)) + (t • (fderiv ℝ v x))
+local notation "f'" t:max x:max =>
+  (ContinuousLinearMap.id ℝ (E n)) + ((t : ℝ) • (fderiv ℝ v x))
 
 /- f' t x est la différentielle de f t en x ∈ A -/
-include vContDiff in
+include vContDiff hs in
 lemma ftDeriv (t : ℝ) : ∀ x ∈ A, HasFDerivWithinAt (f t) (f' t x) A x :=
-  fun x _ => ((hasFDerivAt_id x).add
-    ((vContDiff.differentiable le_rfl).differentiableAt.hasFDerivAt.const_smul t)).hasFDerivWithinAt
+  fun x hx => ((hasFDerivAt_id x).add
+    (((vContDiff.differentiableOn le_rfl).differentiableAt
+    (nhds_le_nhdsSet hx hs)).hasFDerivAt.const_smul t)).hasFDerivWithinAt
 
 /- f' t x est la différentielle (stricte) de f t en x -/
-include vContDiff in
-lemma ftStrictDeriv (t : ℝ) (x : E n) : HasStrictFDerivAt (f t) (f' t x) x :=
-  (hasStrictFDerivAt_id x).add
-    ((vContDiff.contDiffAt.hasStrictFDerivAt le_rfl).const_smul t)
+include vContDiff hs in
+lemma ftStrictDeriv (t : ℝ) : ∀ x ∈ A, HasStrictFDerivAt (f t) (f' t x) x :=
+  fun x hx => (hasStrictFDerivAt_id x).add
+    (((vContDiff.contDiffAt (nhds_le_nhdsSet hx hs)).hasStrictFDerivAt le_rfl).const_smul t)
 
 
 section vol_poly
@@ -299,12 +347,12 @@ include AComp in
 lemma meas_A : MeasurableSet A :=
   AComp.isClosed.measurableSet
 
-include AComp vContDiff in
+include AComp vContDiff hs in
 lemma lintegral_abs_det_f't : ∀ᶠ t in 𝓝 0,
     ∫⁻ x in A, ENNReal.ofReal |(f' t x).det| ∂volume = volume ((f t) '' A) := by
   filter_upwards [@injOn_A_ft n v A] with t hinj
   exact lintegral_abs_det_fderiv_eq_addHaar_image volume
-    (meas_A n AComp) (@ftDeriv n v vContDiff A t) hinj
+    (meas_A AComp) (ftDeriv hs vContDiff t) hinj
 
 /- include AComp vContDiff hv in
 lemma ft_volume_withDensity_abs_det_f't_eq_volume : ∀ᶠ t in 𝓝 0,
@@ -346,7 +394,7 @@ lemma sum_perm_sign_smul_prod_fixpoint : univ.sum (fun (σ : Equiv.Perm (Fin n))
       Equiv.Perm.sign σ • univ.prod (fun i => if (σ i) = i then (1 : ℝ) else 0))
       = (fun σ => if 1 = σ then 1 else 0) := by
     ext σ
-    rw [prod_perm_fixpoint n σ, apply_ite (fun ε => Equiv.Perm.sign σ • ε)]
+    rw [prod_perm_fixpoint σ, apply_ite (fun ε => Equiv.Perm.sign σ • ε)]
     by_cases hσ : 1 = σ
     · simp [← hσ]
     · simp [eq_false hσ]
@@ -400,16 +448,16 @@ lemma continuous_coeff_C_add_C_mul_X {a : ℝ} {b : E n → ℝ} {k : ℕ} (h : 
 
 def my_coe (u : E n →L[ℝ] E n) : E n → E n := u
 
-lemma continuous_my_coe : Continuous (my_coe n) :=
+lemma continuous_my_coe : Continuous (@my_coe n) :=
   continuous_pi fun x => (ContinuousLinearMap.apply ℝ (E n) x).continuous
 
-include vContDiff in
-lemma continuous_jac_f_apply {i j : Fin n} :
-    Continuous (fun x => jac_f x i j) := by
-  simp
-  exact (continuous_apply_apply _ _).comp
-    ((continuous_my_coe n).comp
-    (vContDiff.continuous_fderiv (by rfl)))
+include vContDiff s_isOpen in
+lemma continuousOn_jac_f_apply {i j : Fin n} :
+    ContinuousOn (fun x => jac_f x i j) s := by
+  simp only [LinearMap.toMatrix'_apply]
+  refine (continuous_apply_apply _ _).comp_continuousOn
+    (continuous_my_coe.comp_continuousOn
+    (vContDiff.continuousOn_fderiv_of_isOpen s_isOpen (le_refl _)))
 
 lemma ofNat'_val (m : ℕ) (hm : 0 < m) (i : Fin m) : @Fin.ofNat' m (NeZero.of_gt hm) i.val = i := by
   apply Fin.eq_of_val_eq
@@ -432,57 +480,57 @@ lemma prod_univ_Fin_eq_prod_range {α : Type} [CommMonoid α] (m : ℕ) (g : ℕ
   rfl
 
 include n_pos in
-lemma continuous_coeff_prod (m : ℕ) (hm : 0 < m) (hmn : m ≤ n) (k : ℕ)
-    (P : Fin n → E n → ℝ[X]) (hP : ∀ i k', Continuous (fun x => (P i x).coeff k')) :
-    Continuous fun x => ((univ : Finset (Fin m)).prod (fun i => P (@Fin.ofNat' n (NeZero.of_gt n_pos) i) x)).coeff k := by
+lemma continuousOn_coeff_prod (m : ℕ) (hm : 0 < m) (hmn : m ≤ n) (k : ℕ)
+    (P : Fin n → E n → ℝ[X]) (hP : ∀ i k', ContinuousOn (fun x => (P i x).coeff k') s) :
+    ContinuousOn (fun x => ((univ : Finset (Fin m)).prod
+    (fun i => P (@Fin.ofNat' n (NeZero.of_gt n_pos) i) x)).coeff k) s := by
   have : (fun x => ((univ : Finset (Fin m)).prod (fun i => P (@Fin.ofNat' n (NeZero.of_gt n_pos) i) x)).coeff k)
       = (fun x => ((range m).prod (fun i => P (@Fin.ofNat' n (NeZero.of_gt n_pos) i) x)).coeff k) := by
     ext x
     rw [← prod_univ_Fin_eq_prod_range]
   rw [this]
   induction' m with m ih generalizing k
-  · simp [coeff_one, continuous_const]
+  · simp [coeff_one, continuousOn_const]
   · have : (fun x => (∏ i ∈ range (m + 1), P (@Fin.ofNat' n (NeZero.of_gt n_pos) i) x).coeff k)
         = (fun x => ∑ μ ∈ antidiagonal k, (P (@Fin.ofNat' n (NeZero.of_gt n_pos) m) x).coeff μ.1
         * (∏ i ∈ range m, P (@Fin.ofNat' n (NeZero.of_gt n_pos) i) x).coeff μ.2) := by
       ext x
       rw [range_succ, prod_insert not_mem_range_self, coeff_mul]
     rw [this]
-    refine continuous_finset_sum _ (fun μ _ => (hP _ _).mul ?_)
+    refine continuousOn_finset_sum _ (fun μ _ => (hP _ _).mul ?_)
     by_cases mz : m = 0
     · have : (fun x => ((range m).prod fun i => P (@Fin.ofNat' n (NeZero.of_gt n_pos) i) x).coeff μ.2)
           = (fun x => if μ.2 = 0 then 1 else 0) := by
         ext x
         simp [mz, coeff_one]
       rw [this]
-      exact continuous_const
+      exact continuousOn_const
     · exact ih (pos_iff_ne_zero.2 mz) (lt_of_lt_of_le (Nat.lt_succ_self m) hmn).le
         μ.2 (by ext x; rw [← prod_univ_Fin_eq_prod_range])
 
 include n_pos in
-lemma continuous_coeff_prod' (k : ℕ) (P : Fin n → E n → ℝ[X])
-    (hP : ∀ i k', Continuous (fun x => (P i x).coeff k')) :
-    Continuous fun x => ((univ : Finset (Fin n)).prod (fun i => P i x)).coeff k := by
+lemma continuousOn_coeff_prod' (k : ℕ) (P : Fin n → E n → ℝ[X])
+    (hP : ∀ i k', ContinuousOn (fun x => (P i x).coeff k') s) :
+    ContinuousOn (fun x => ((univ : Finset (Fin n)).prod (fun i => P i x)).coeff k) s := by
   have : (fun x => (univ.prod (fun i => P i x)).coeff k)
       = (fun x => ((univ : Finset (Fin n)).prod
       (fun i => P (@Fin.ofNat' n (NeZero.of_gt n_pos) i) x)).coeff k) :=
     (funext fun x => congrArg (fun p => coeff p k)
       (congrArg _ (funext fun i => (congrArg (fun j => P j x) (by rw [ofNat'_val _ n_pos])))))
   rw [this]
-  exact continuous_coeff_prod _ n_pos _ n_pos le_rfl _ _ hP
+  exact continuousOn_coeff_prod n_pos _ n_pos le_rfl _ _ hP
 
 /- det (f' t x) est polynomial en t et les coefficients sont continus en x -/
-include n_pos vContDiff in
+include n_pos vContDiff s_isOpen in
 lemma f't_det_poly : ∃ P : E n → Polynomial ℝ,
     (∀ x : E n, (P x).natDegree ≤ n)
     ∧ (∀ x : E n, (P x).coeff 0 = 1)
     ∧ (∀ t : ℝ, ∀ x : E n, (f' t x).det = (P x).eval t)
-    ∧ (∀ k : ℕ, Continuous fun x => (P x).coeff k) := by
-  let P := (fun x =>
-    (of (fun i j => (if i = j then 1 else 0) + C (jac_f x i j) * X)).det)
+    ∧ (∀ k : ℕ, ContinuousOn (fun x => (P x).coeff k) s) := by
+  let P := (fun x => (of (fun i j => (if i = j then 1 else 0) + C (jac_f x i j) * X)).det)
   use P
   constructor
-  · refine fun x => natDegree_det _ _ (fun i j => ?_)
+  · refine fun x => natDegree_det _ (fun i j => ?_)
     rw [of_apply]
     apply le_trans (natDegree_add_le _ _)
     rw [apply_ite natDegree, natDegree_one, natDegree_zero, ite_id, Nat.zero_max]
@@ -527,8 +575,8 @@ lemma f't_det_poly : ∃ P : E n → Polynomial ℝ,
           ext σ
           simp [coeff_smul]
         rw [P_coeff]
-        refine continuous_finset_sum _ (fun σ _ => Continuous.const_smul
-          (continuous_coeff_prod' _ n_pos _ _ (fun i k' => ?_)) _)
+        refine continuousOn_finset_sum _ (fun σ _ => ContinuousOn.const_smul
+          (continuousOn_coeff_prod' n_pos _ _ (fun i k' => ?_)) _)
         have : (fun x => (of (fun i j => (if i = j then 1 else 0)
             + C (jac_f x i j) * X) (σ i) i).coeff k')
             = (fun x => if k' = 0 then (if σ i = i then 1 else 0)
@@ -544,10 +592,10 @@ lemma f't_det_poly : ∃ P : E n → Polynomial ℝ,
             · rw [C_add_C_mul_X_coeff_of_one_lt _ _ k' hk'0 hk'1]
               simp [hk'0, hk'1]
         rw [this]
-        exact continuous_if_const _ (fun _ => continuous_const)
-            (fun _ => continuous_if_const _
-            (fun _ => (@continuous_jac_f_apply n v vContDiff _ _))
-            (fun _ => continuous_const))
+        exact continuousOn_if_const _ (fun _ => continuousOn_const)
+          (fun _ => continuousOn_if_const _
+          (fun _ => (continuousOn_jac_f_apply s_isOpen vContDiff))
+          (fun _ => continuousOn_const))
 
 lemma zero_lt_continuous (g : ℝ → ℝ) (hg : Continuous g) (h0 : g 0 = 1) : ∀ᶠ t in 𝓝 0, 0 < g t :=
   eventually_gt_of_tendsto_gt (by linarith) (hg.tendsto' _ _ rfl)
@@ -564,7 +612,7 @@ lemma continuous_bound (M : ℝ) :
 
 lemma pos_bound (M : ℝ) : ∀ᶠ t in 𝓝 0,
     0 < 1 - M * (range n).sum fun k => |t| ^ (k + 1) := by
-  apply zero_lt_continuous _ (continuous_bound n M)
+  apply zero_lt_continuous _ (continuous_bound M)
   simp
 
 lemma range_bounded (ι : ℕ → ℝ) (m : ℕ) (hm : m > 0) (hι : ι 0 > 0) :
@@ -591,12 +639,12 @@ lemma useless_lemma (g : ℕ → ℝ) (n : ℕ) :
     (range (n + 1)).sum g = (range (1 + n)).sum g := by
   rw [add_comm]
 
-include AComp in
+include AComp hs in
 lemma bound_poly (P : E n → Polynomial ℝ) (hdeg : ∀ x, (P x).natDegree ≤ n)
-    (h0 : ∀ x, (P x).coeff 0 = 1) (hcont : ∀ k, Continuous (fun x => (P x).coeff k)) :
+    (h0 : ∀ x, (P x).coeff 0 = 1) (hcont : ∀ k, ContinuousOn (fun x => (P x).coeff k) s) :
     ∃ M, ∀ t : ℝ, ∀ x : A,
     1 - M * ((range n).sum fun k => |t| ^ (k + 1)) ≤ (P x).eval t := by
-  let continuous_coeff (k : ℕ) : C(A,ℝ) := ContinuousMap.restrict A ⟨_, hcont k⟩
+  let continuous_coeff (k : ℕ) : C(A,ℝ) := ⟨_, ((hcont k).mono (subset_of_mem_nhdsSet hs)).restrict⟩
   let bounded_continuous_coeff (k : ℕ) := @BoundedContinuousFunction.mkOfCompact A ℝ _ _ (instComp n AComp) (continuous_coeff k)
   have : ∀ k, ∃ M, ∀ x : A, |(P x).coeff k| ≤ M :=
     fun k => ⟨‖bounded_continuous_coeff k‖, fun x => ((bounded_continuous_coeff k).norm_coe_le_norm x)⟩
@@ -615,56 +663,54 @@ lemma bound_poly (P : E n → Polynomial ℝ) (hdeg : ∀ x, (P x).natDegree ≤
   exact add_le_add_left (sum_le_sum (this t x)) _
 
 /- det (f' t x) > 0 pour t assez petit -/
-include n_pos vContDiff AComp in
+include n_pos vContDiff AComp hs s_isOpen in
 lemma zero_lt_det_f't : ∀ᶠ t in 𝓝 0, ∀ x : A, 0 < (f' t x).det := by
-  have ⟨P, hP⟩ := @f't_det_poly n n_pos v vContDiff
-  have ⟨M, hM⟩ := bound_poly n AComp P hP.1 hP.2.1 hP.2.2.2
-  filter_upwards [pos_bound n M] with t ht x
+  have ⟨P, hP⟩ := f't_det_poly n_pos s_isOpen vContDiff
+  have ⟨M, hM⟩ := bound_poly AComp hs P hP.1 hP.2.1 hP.2.2.2
+  filter_upwards [pos_bound M] with t ht x
   rw [hP.2.2.1 t x]
   exact lt_of_lt_of_le ht (hM t x)
 
 /- |det (f' t x)| est polynomial en t et les coefficients sont continus en x -/
-include n_pos vContDiff AComp in
+include n_pos vContDiff AComp hs s_isOpen in
 lemma abs_det_f't_poly : ∃ P : E n → Polynomial ℝ,
     (∀ x : E n, (P x).natDegree ≤ n)
     ∧ (∀ᶠ t in 𝓝 0, ∀ x : A, |(f' t x).det| = (P x).eval t)
-    ∧ (∀ k : ℕ, Continuous fun x => (P x).coeff k) := by
-  have ⟨P, hP⟩ := @f't_det_poly n n_pos v vContDiff
+    ∧ (∀ k : ℕ, ContinuousOn (fun x => (P x).coeff k) s) := by
+  have ⟨P, hP⟩ := f't_det_poly n_pos s_isOpen vContDiff
   refine ⟨P, hP.1, ?_, hP.2.2.2⟩
-  filter_upwards [@zero_lt_det_f't n n_pos v vContDiff A AComp] with t hpos x
+  filter_upwards [zero_lt_det_f't n_pos AComp hs s_isOpen vContDiff] with t hpos x
   rw [abs_of_pos (hpos x), hP.2.2.1 t]
 
-include vContDiff in
-lemma cont_abs_det_f't (t : ℝ) : Continuous (fun x => |(f' t x).det|) :=
-  continuous_abs.comp (ContinuousLinearMap.continuous_det.comp (continuous_const.add
-    (continuous_const.smul (vContDiff.continuous_fderiv (by rfl)))))
+include vContDiff s_isOpen in
+lemma continuousOn_abs_det_f't (t : ℝ) : ContinuousOn (fun x => |(f' t x).det|) s :=
+  continuous_abs.comp_continuousOn (ContinuousLinearMap.continuous_det.comp_continuousOn
+    (continuous_const.continuousOn.add (continuous_const.continuousOn.smul
+    (vContDiff.continuousOn_fderiv_of_isOpen s_isOpen (by rfl)))))
 
 lemma nonneg_ae_abs_det_f't (t : ℝ) : 0 ≤ᵐ[volume.restrict A] fun x => |(f' t x).det| := by
   filter_upwards
   simp
 
 /- le volume de (f t)''(A) est polynomial en t -/
-include n_pos vContDiff AComp in
+include n_pos vContDiff AComp hs s_isOpen in
 lemma vol_ft_A_poly : ∃ P : Polynomial ℝ, ∀ᶠ t in 𝓝 0,
     (volume ((f t) '' A)).toReal = (P.eval t) := by
-  let ⟨P, hP⟩ := @abs_det_f't_poly n n_pos v vContDiff A AComp
+  let ⟨P, hP⟩ := abs_det_f't_poly n_pos AComp hs s_isOpen vContDiff
   use (range (n + 1)).sum (fun i => C (∫ x in A, (P x).coeff i ∂volume) * X ^ i)
-  filter_upwards [@lintegral_abs_det_f't n v vContDiff A AComp, hP.2.1] with t hInt hP1
-  simp [← hInt, eval_finset_sum,
-    ← integral_eq_lintegral_of_nonneg_ae (nonneg_ae_abs_det_f't n t) (@cont_abs_det_f't n v vContDiff t).aestronglyMeasurable]
+  filter_upwards [lintegral_abs_det_f't AComp hs vContDiff, hP.2.1] with t hInt hP1
+  rw [← hInt, eval_finset_sum, ← integral_eq_lintegral_of_nonneg_ae (nonneg_ae_abs_det_f't t)
+    (((continuousOn_abs_det_f't s_isOpen vContDiff t).mono (subset_of_mem_nhdsSet hs)).aestronglyMeasurable
+    (meas_A AComp))]
   have : A.EqOn (fun x => |(f' t x).det|) (fun x => (range (n + 1)).sum (fun n => (P x).coeff n * t ^ n)) := by
     intro x xA
     simp [hP1 ⟨x, xA⟩]
     nth_rw 1 [(P x).as_sum_range' (n + 1) (Nat.lt_succ_of_le (hP.1 x))]
     simp [eval_finset_sum]
   have integrable_coeff (i : ℕ) : Integrable (fun x => (P x).coeff i * t ^ i) (volume.restrict A) :=
-    ContinuousOn.integrableOn_compact AComp (Continuous.continuousOn ((hP.2.2 i).smul continuous_const))
-  rw [setIntegral_congr (meas_A n AComp) this, integral_finset_sum _ (fun i _ => integrable_coeff i)]
-  have : (fun i => ∫ x in A, (P x).coeff i * t ^ i) = (fun i => (∫ x in A, (P x).coeff i) * t ^ i) := by
-    ext i
-    show ∫ x in A, (P x).coeff i • t ^ i = (∫ x in A, (P x).coeff i) • t ^ i
-    rw [integral_smul_const]
-  rw [this]
+    ContinuousOn.integrableOn_compact AComp (((hP.2.2 i).smul continuousOn_const).mono (subset_of_mem_nhdsSet hs))
+  rw [setIntegral_congr (meas_A AComp) this, integral_finset_sum _ (fun i _ => integrable_coeff i)]
+  simp_rw [eval_mul, eval_C, eval_pow, eval_X, integral_mul_right]
 
 end vol_poly
 
@@ -683,7 +729,7 @@ lemma ft_mem_sphere_of_mem_sphere (t : ℝ) (x : unitSphere n) :
     f t x ∈ Metric.sphere 0 (Real.sqrt (1 + t*t)) := by
   rw [mem_sphere_zero_iff_norm, ← Real.sqrt_mul_self (norm_nonneg _),
     norm_add_sq_eq_norm_sq_add_norm_sq_real
-    (inner_self_v_eq_zero_of_norm_one n hv t x)]
+    (inner_self_v_eq_zero_of_norm_one hv t x)]
   simp [mem_sphere_zero_iff_norm.1 (Subtype.mem x), norm_smul, vUnit x]
 
 include hv vUnit in
@@ -698,7 +744,7 @@ lemma ft_mapsTo_sphere (t : ℝ) : MapsTo (f t) (unitSphere n)
     (Metric.sphere 0 (Real.sqrt (1 + t * t))) :=
   fun x hx => @ft_mem_sphere_of_mem_sphere n _ hv vUnit t ⟨x, hx⟩
 
-variable (vContDiff) (vUnit)
+variable (vUnit)
 
 include hn in
 lemma one_lt_rank_EuclideanSpace : 1 < Module.rank ℝ (E n) := by
@@ -709,9 +755,9 @@ lemma one_lt_rank_EuclideanSpace : 1 < Module.rank ℝ (E n) := by
 local notation "f_restr" =>
   fun (t : ℝ) ↦ restrictPreimage (Metric.sphere 0 (Real.sqrt (1 + t * t))) (f t)
 
-include vContDiff in
+include hv in
 lemma continuous_ft_restr (t : ℝ) : Continuous (f_restr t) :=
-  (@continuous_ft n _ vContDiff t).restrict _
+  (continuous_ft hv t).restrict _
 
 include hv vUnit in
 lemma ft_preimage_sphere (t : ℝ) :
@@ -731,7 +777,7 @@ lemma ft_preimage_sphere (t : ℝ) :
 
 instance instCompactPreimageSphere (t : ℝ) :
     CompactSpace ((f t) ⁻¹' (Metric.sphere 0 (Real.sqrt (1 + t * t)))) := by
-  rw [ft_preimage_sphere n hv vUnit]
+  rw [ft_preimage_sphere hv vUnit]
   exact Metric.sphere.compactSpace _ _
 
 lemma preimage_restrict {α β : Type} (s : Set α) (g : α → β) (t : Set β) :
@@ -741,45 +787,44 @@ lemma preimage_restrict {α β : Type} (s : Set α) (g : α → β) (t : Set β)
     (image_preimage_subset _ _))
     (fun x hx => ⟨⟨x, hx.1⟩, ⟨mem_preimage.2 hx.2, rfl⟩⟩)
 
-include n_pos vContDiff in
-lemma isOpenMap_ft : ∀ᶠ t in 𝓝 0, IsOpenMap (restrict (Metric.ball 0 2) (f t)) := by
-  filter_upwards [@zero_lt_det_f't n n_pos _ vContDiff _
-    (ProperSpace.isCompact_closedBall 0 2)] with t ht
+include n_pos vContDiff s_isOpen hs_crown in
+lemma isOpenMap_ft : ∀ᶠ t in 𝓝 0, IsOpenMap (restrict (crown 2⁻¹ 2) (f t)) := by
+  filter_upwards [zero_lt_det_f't n_pos (isCompact_closedCrown 2⁻¹ 2)
+    hs_crown s_isOpen vContDiff] with t ht
   refine isOpenMap_iff_nhds_le.2 (fun ⟨x, hx⟩ => ?_)
   rw [restrict_apply, restrict_eq, ← Filter.map_map,
     ← @HasStrictFDerivAt.map_nhds_eq_of_equiv ℝ _ _ _ _ _ _ _ _
-    ((f' t x).equivOfDetNeZero (ht ⟨x, mem_closedBall_zero_iff.2
-    (le_of_lt (mem_ball_zero_iff.1 hx))⟩).ne.symm).toContinuousLinearEquiv _ _
-    (@ftStrictDeriv n _ vContDiff t x)]
-  have : Filter.map Subtype.val (𝓝 (⟨x, hx⟩ : Metric.ball (0 : E n) 2)) = 𝓝 x :=
+    ((f' t x).equivOfDetNeZero (ht ⟨x, crown_subset_closedCrown hx⟩).ne.symm).toContinuousLinearEquiv _ _
+    (ftStrictDeriv hs_crown vContDiff t x (crown_subset_closedCrown hx))]
+  have : Filter.map Subtype.val (𝓝 (⟨x, hx⟩ : crown 2⁻¹ 2)) = 𝓝 x :=
     eq_of_le_of_le continuous_subtype_val.continuousAt.tendsto
-      (isOpenMap_iff_nhds_le.1 Metric.isOpen_ball.isOpenMap_subtype_val ⟨x, hx⟩)
+      (isOpenMap_iff_nhds_le.1 (isOpen_crown _ _).isOpenMap_subtype_val ⟨x, hx⟩)
   rw [this]
 
 include hv vUnit in
-lemma subtype_val_preimage_ball_eq_sphere (t : ℝ) :
+lemma subtype_val_preimage_crown_eq_sphere (t : ℝ) :
     (univ : Set ((f t) ⁻¹' (Metric.sphere 0 (Real.sqrt (1 + t * t)))))
-    = (Subtype.val ⁻¹' (Metric.ball (0 : E n) 2)) := by
+    = Subtype.val ⁻¹' (crown 2⁻¹ 2) := by
   apply eq_preimage_subtype_val_iff.2
-  rw [ft_preimage_sphere n hv vUnit]
-  exact fun x hx =>
-    ⟨fun _ => mem_ball_zero_iff.2 (by rw [mem_sphere_zero_iff_norm.1 hx]; linarith),
-    fun _ => mem_univ _⟩
+  rw [ft_preimage_sphere hv vUnit]
+  refine fun x hx => ⟨fun _ => ?_, fun _ => mem_univ _⟩
+  rw [mem_crown, mem_sphere_zero_iff_norm.1 hx]
+  refine ⟨two_inv_lt_one, one_lt_two⟩
 
-include n_pos hv vContDiff vUnit in
+include n_pos hv vContDiff vUnit s_isOpen hs_crown in
 /- f t : unitSphere n → Metric.sphere 0 (sqrt (1 + t*t)) est ouverte pour t assez petit -/
 lemma isOpenMap_ft_restr : ∀ᶠ t in 𝓝 0, IsOpenMap (f_restr t) := by
-  filter_upwards [@isOpenMap_ft n n_pos v vContDiff] with t ht
+  filter_upwards [isOpenMap_ft n_pos s_isOpen vContDiff hs_crown] with t ht
   intro U ⟨V, hV, hUV⟩
-  have : U = Subtype.val ⁻¹' (V ∩ Metric.ball 0 2) := by
-    rw [preimage_inter, hUV, ← subtype_val_preimage_ball_eq_sphere n hv vUnit, inter_univ]
+  have : U = Subtype.val ⁻¹' (V ∩ crown 2⁻¹ 2) := by
+    rw [preimage_inter, hUV, ← subtype_val_preimage_crown_eq_sphere hv vUnit, inter_univ]
   rw [this, image_restrictPreimage, ← image_restrict]
   exact continuous_subtype_val.isOpen_preimage _
     (ht _ (continuous_subtype_val.isOpen_preimage _ hV))
 
 include hn in
 lemma isConnected_sphere_E (t : ℝ) : IsConnected (Metric.sphere (0 : E n) (Real.sqrt (1 + t*t))) :=
-  isConnected_sphere (one_lt_rank_EuclideanSpace n hn) 0 (Real.sqrt_nonneg (1 + t*t))
+  isConnected_sphere (one_lt_rank_EuclideanSpace hn) 0 (Real.sqrt_nonneg (1 + t*t))
 
 include hv vUnit in
 lemma image_ft_eq_image_ft_restr (t : ℝ) :
@@ -787,7 +832,7 @@ lemma image_ft_eq_image_ft_restr (t : ℝ) :
   ext y
   refine ⟨fun ⟨x, hx, hxy⟩ => (mem_image _ _ _).2 ?_,
     fun ⟨y', ⟨x, hxy'⟩, hyy'⟩ => (mem_image _ _ _).2
-    ⟨x, ⟨by simp [← ft_preimage_sphere n hv vUnit t, Subtype.mem x],
+    ⟨x, ⟨by simp [← ft_preimage_sphere hv vUnit t, Subtype.mem x],
     by simp [← hyy', ← hxy']⟩⟩⟩
   have y_mem_sphere : y ∈ Metric.sphere 0 (Real.sqrt (1 + t * t)) := by
     rw [← hxy]
@@ -796,22 +841,23 @@ lemma image_ft_eq_image_ft_restr (t : ℝ) :
   exact ⟨mem_range.2 ⟨⟨x, by rwa [mem_preimage, hxy]⟩,
     Subtype.val_injective (by simp [hxy])⟩, by simp⟩
 
-include n_pos hv vContDiff vUnit in
+include n_pos hv vContDiff vUnit s_isOpen hs_crown in
 lemma isOpen_image_ft_restr : ∀ᶠ t in 𝓝 0, IsOpen (range (f_restr t)) := by
-  filter_upwards [isOpenMap_ft_restr n n_pos hv vContDiff vUnit] with t ht
+  filter_upwards [isOpenMap_ft_restr n_pos hv vUnit s_isOpen vContDiff hs_crown] with t ht
   exact ht.isOpen_range
 
-include vContDiff in
+include hv in
 lemma isClosed_image_ft (t : ℝ) : IsClosed ((f t) '' (unitSphere n)) :=
-  ((isCompact_sphere _ _).image (@continuous_ft n v vContDiff t)).isClosed
+  ((isCompact_sphere _ _).image (continuous_ft hv t)).isClosed
 
-include hv vContDiff vUnit in
+include hv vUnit in
 lemma isClosed_image_ft_restr (t : ℝ) : IsClosed (range (f_restr t)) :=
-  (@isCompact_range _ _ _ _ (instCompactPreimageSphere n hv vUnit t) _
-  (continuous_ft_restr n vContDiff t)).isClosed
+  (@isCompact_range _ _ _ _ (instCompactPreimageSphere hv vUnit t) _
+  (continuous_ft_restr hv t)).isClosed
 
-instance instNontrivialE : Nontrivial (E n) := by
-  sorry
+instance instNontrivialE : Nontrivial (E n) :=
+  have : Nonempty (Fin n) := Fin.pos_iff_nonempty.mp n_pos
+  inferInstance
 
 lemma image_preimage_eq_self {α : Type} (s : Set α) :
     Subtype.val '' (Subtype.val ⁻¹' s : Set s) = s := by
@@ -820,28 +866,30 @@ lemma image_preimage_eq_self {α : Type} (s : Set α) :
 lemma useless_lemma2 {α : Type} {s s' t : Set α} (h : s = s') (h' : s ⊆ t) : s' ⊆ t := by
   rwa [← h]
 
-include hn hv vContDiff vUnit in
+include hn hv vContDiff vUnit s_isOpen hs_crown in
 lemma image_ft_eq_sphere : ∀ᶠ t in 𝓝 0,
     (f t) '' (unitSphere n) = Metric.sphere 0 (Real.sqrt (1 + t * t)) := by
-  filter_upwards [isOpen_image_ft_restr n (one_pos.trans hn) hv vContDiff vUnit] with t ht
+  filter_upwards [isOpen_image_ft_restr (one_pos.trans hn) hv vUnit s_isOpen
+    vContDiff hs_crown] with t ht
   apply eq_of_subset_of_subset (@image_ft_subset_sphere _ _ hv vUnit t)
   rw [@image_ft_eq_image_ft_restr _ _ hv vUnit]
   apply useless_lemma2 (image_preimage_eq_self _)
   apply (image_subset_image_iff Subtype.val_injective).2
   rw [Subtype.coe_preimage_self]
   refine (Subtype.connectedSpace
-    (isConnected_sphere_E n hn t)).isPreconnected_univ.subset_isClopen
-    ⟨isClosed_image_ft_restr _ hv vContDiff vUnit t, ht⟩ ?_
+    (isConnected_sphere_E hn t)).isPreconnected_univ.subset_isClopen
+    ⟨isClosed_image_ft_restr hv vUnit t, ht⟩ ?_
   rw [univ_inter]
   apply Nonempty.of_image
   rw [← @image_ft_eq_image_ft_restr _ _ hv vUnit]
-  apply (NormedSpace.sphere_nonempty.2 (zero_le_one)).image
+  have := instNontrivialE (one_pos.trans hn)
+  apply ((NormedSpace.sphere_nonempty).2 (zero_le_one)).image
 
 -- use group actions ? image_smul_set...
-include hn hv vContDiff vUnit in
+include hn hv vContDiff vUnit s_isOpen hs_crown in
 lemma image_ft_sphere_eq_sphere : ∀ᶠ t in 𝓝 0, ∀ r > 0,
     (f t) '' (Metric.sphere 0 r) = Metric.sphere 0 (r * Real.sqrt (1 + t * t)) := by
-  filter_upwards [image_ft_eq_sphere n hn hv vContDiff vUnit] with t ht r r_pos
+  filter_upwards [image_ft_eq_sphere hn hv vUnit s_isOpen vContDiff hs_crown] with t ht r r_pos
   refine eq_of_subset_of_subset
     (fun y ⟨x, hx, hxy⟩ => mem_sphere_zero_iff_norm.2
     (mul_left_cancel₀ (inv_pos.2 r_pos).ne.symm ?_))
@@ -871,26 +919,16 @@ lemma image_ft_sphere_eq_sphere : ∀ᶠ t in 𝓝 0, ∀ r > 0,
 end image_ft_sphere
 
 
-local notation "crown" => fun (a b : ℝ) =>
-  (Metric.closedBall (0 : E n) b) \ (Metric.ball 0 a)
+section volume_closedCrown
 
+open Set Metric MeasureTheory
 
-section volume_crown
+variable (vUnit)
 
-open Set
-open Metric
-open MeasureTheory
-
-variable (vContDiff) (vUnit)
-
-lemma isCompact_crown {a b : ℝ} : IsCompact (crown a b) :=
-  (ProperSpace.isCompact_closedBall _ _).diff isOpen_ball
-
-lemma measurableSet_crown {a b : ℝ} : MeasurableSet (crown a b) :=
-  measurableSet_closedBall.diff measurableSet_ball
-
-lemma measure_crown {a b : ℝ} (ha : 0 ≤ a) (hab : a ≤ b) :
-    (volume (crown a b)).toReal = (b ^ n - a ^ n) * (volume (ball (0 : E n) 1)).toReal := by
+include n_pos in
+lemma measure_closedCrown {a b : ℝ} (ha : 0 ≤ a) (hab : a ≤ b) :
+    (volume (closedCrown a b)).toReal = (b ^ n - a ^ n) * (volume (ball (0 : E n) 1)).toReal := by
+  have := instNontrivialE n_pos
   rw [measure_diff ((ball_subset_ball hab).trans ball_subset_closedBall)
     measurableSet_ball.nullMeasurableSet measure_ball_lt_top.ne,
     Measure.addHaar_closedBall _ _ (ha.trans hab), Measure.addHaar_ball _ _ ha,
@@ -902,14 +940,14 @@ lemma measure_crown {a b : ℝ} (ha : 0 ≤ a) (hab : a ≤ b) :
     ENNReal.toReal_ofReal (pow_nonneg (ha.trans hab) _), sub_mul]
 
 include n_pos in
-lemma measure_crown_ne_zero {a b : ℝ} (ha : 0 ≤ a) (hab : a < b) :
-    (volume (crown a b)).toReal ≠ 0 := by
-  rw [measure_crown _ ha hab.le]
+lemma measure_closedCrown_ne_zero {a b : ℝ} (ha : 0 ≤ a) (hab : a < b) :
+    (volume (closedCrown a b)).toReal ≠ 0 := by
+  rw [measure_closedCrown n_pos ha hab.le]
   exact mul_ne_zero (sub_ne_zero.2 (not_imp_not.2 (pow_eq_pow_iff_of_ne_zero n_pos.ne.symm).1
     (not_or.2 ⟨hab.ne.symm, not_and_or.2 (Or.inl (by linarith))⟩)))
     (ENNReal.toReal_ne_zero.2 ⟨(measure_ball_pos _ _ one_pos).ne.symm, measure_ball_lt_top.ne⟩)
 
-lemma crown_eq_union_sphere (a b : ℝ) : crown a b = ⋃ (r : Icc a b), sphere 0 r := by
+lemma closedCrown_eq_union_sphere (a b : ℝ) : closedCrown a b = ⋃ (r : Icc a b), sphere 0 r := by
   refine eq_of_subset_of_subset
     (fun x ⟨hxb, hxa⟩ => mem_iUnion.2
     ⟨⟨‖x‖, ⟨not_lt.1 (fun h => hxa (mem_ball_zero_iff.2 h)),
@@ -925,11 +963,11 @@ lemma crown_eq_union_sphere (a b : ℝ) : crown a b = ⋃ (r : Icc a b), sphere 
 lemma sqrt_one_add_sq_pos {t : ℝ} : 0 < √(1 + t * t) :=
   Real.sqrt_pos_of_pos (lt_add_of_pos_of_le one_pos (mul_self_nonneg _))
 
-include hn hv vContDiff vUnit in
-lemma image_ft_crown_eq_crown (a b : ℝ) (ha : 0 < a) : ∀ᶠ t in 𝓝 0,
-    (f t) '' (crown a b) = crown (a * √(1 + t * t)) (b * √(1 + t * t)) := by
-  filter_upwards [image_ft_sphere_eq_sphere _ hn hv vContDiff vUnit] with t ht
-  simp only [crown_eq_union_sphere]
+include hn hv vContDiff vUnit s_isOpen hs_crown in
+lemma image_ft_closedCrown_eq_closedCrown (a b : ℝ) (ha : 0 < a) : ∀ᶠ t in 𝓝 0,
+    (f t) '' (closedCrown a b) = closedCrown (a * √(1 + t * t)) (b * √(1 + t * t)) := by
+  filter_upwards [image_ft_sphere_eq_sphere hn hv vUnit s_isOpen vContDiff hs_crown] with t ht
+  simp only [closedCrown_eq_union_sphere]
   rw [image_iUnion]
   refine eq_of_subset_of_subset (fun y hy => ?_) ?_
   · let ⟨r, ⟨x, hxr, hxy⟩⟩ := mem_iUnion.1 hy
@@ -947,15 +985,16 @@ lemma image_ft_crown_eq_crown (a b : ℝ) (ha : 0 < a) : ∀ᶠ t in 𝓝 0,
       (inv_pos_of_pos sqrt_one_add_sq_pos)), mul_assoc,
       inv_mul_cancel₀ sqrt_one_add_sq_pos.ne.symm, mul_one]
 
-include hn hv vContDiff vUnit in
-lemma volume_image_crown {a b : ℝ} (ha : 0 < a) (hab : a ≤ b): ∀ᶠ t in 𝓝 0,
-    (volume ((f t) '' (crown a b))).toReal = √(1 + t * t) ^ n * (volume (crown a b)).toReal := by
-  filter_upwards [image_ft_crown_eq_crown n hn hv vContDiff vUnit a b ha] with t ht
-  rw [ht, measure_crown _ ha.le hab, ← mul_assoc, mul_sub, ← mul_pow, ← mul_pow,
-    measure_crown _ (mul_nonneg ha.le (Real.sqrt_nonneg _)) ((mul_le_mul_right sqrt_one_add_sq_pos).2 hab)]
+include hn hv vContDiff vUnit s_isOpen hs_crown in
+lemma volume_image_closedCrown {a b : ℝ} (ha : 0 < a) (hab : a ≤ b): ∀ᶠ t in 𝓝 0,
+    (volume ((f t) '' (closedCrown a b))).toReal = √(1 + t * t) ^ n * (volume (closedCrown a b)).toReal := by
+  filter_upwards [image_ft_closedCrown_eq_closedCrown hn hv vUnit s_isOpen vContDiff hs_crown a b ha] with t ht
+  rw [ht, measure_closedCrown (one_pos.trans hn) ha.le hab, ← mul_assoc, mul_sub, ← mul_pow, ← mul_pow,
+    measure_closedCrown (one_pos.trans hn) (mul_nonneg ha.le (Real.sqrt_nonneg _))
+    ((mul_le_mul_right sqrt_one_add_sq_pos).2 hab)]
   ac_rfl
 
-end volume_crown
+end volume_closedCrown
 
 
 section sq_ne_poly
@@ -1098,22 +1137,26 @@ end sq_ne_poly
 
 open Polynomial
 
-include hn odd_n hv vContDiff vUnit in
-lemma contradiction : False := by
-  let ⟨P, hP⟩ := @vol_ft_A_poly _ (one_pos.trans hn) _ vContDiff (crown 1 2) (isCompact_crown _)
-  refine not_one_add_sq_pow_n_div_two_eq_poly' _ odd_n
-    ⟨P * C (MeasureTheory.volume (crown 1 2)).toReal⁻¹, ?_⟩
-  filter_upwards [hP, volume_image_crown _ hn hv vContDiff vUnit one_pos one_le_two] with t ht1 ht2
+include hn odd_n hv vUnit in
+lemma contradiction (hvs_crown : ContDiffOn ℝ 1 v {0}ᶜ) : False := by
+  let ⟨P, hP⟩ := vol_ft_A_poly (one_pos.trans hn) (isCompact_closedCrown _ _)
+    (isOpen_compl_singleton.mem_nhdsSet.2 (by simp : closedCrown 1 2 ⊆ {0}ᶜ))
+    isOpen_compl_singleton hvs_crown
+  refine not_one_add_sq_pow_n_div_two_eq_poly' odd_n
+    ⟨P * C (MeasureTheory.volume (closedCrown 1 2)).toReal⁻¹, ?_⟩
+  filter_upwards [hP, volume_image_closedCrown hn hv vUnit isOpen_compl_singleton
+    hvs_crown (isOpen_compl_singleton.mem_nhdsSet.2 (by simp : closedCrown 2⁻¹ 2 ⊆ {0}ᶜ))
+    one_pos one_le_two] with t ht1 ht2
   rw [eval_mul, eval_C, ← ht1, ht2, Real.sqrt_eq_rpow, ← Real.rpow_natCast,
     ← Real.rpow_mul (add_nonneg zero_le_one (mul_self_nonneg _)), one_div_mul_eq_div,
-    mul_assoc, mul_inv_cancel₀ (measure_crown_ne_zero _ (one_pos.trans hn) zero_le_one one_lt_two), mul_one]
+    mul_assoc, mul_inv_cancel₀ (measure_closedCrown_ne_zero (one_pos.trans hn) zero_le_one one_lt_two), mul_one]
 
 include hv in
 lemma v_zero : v 0 = 0 := by
   rw [← zero_smul ℝ 0, hv.isExtension _ _ (le_refl _), zero_smul, zero_smul]
 
-include hn odd_n hv vContDiff in
-theorem HairyBallDiff : ∃ x ∈ unitSphere n, v x = 0 := by
+include hn odd_n hv in
+theorem HairyBallDiff (contDiffOn_v : ContDiffOn ℝ 1 v {0}ᶜ): ∃ x ∈ unitSphere n, v x = 0 := by
   by_contra!
   have v_ne_zero : ∀ x, x ≠ 0 → v x ≠ 0 := by
     intro x hx
@@ -1122,8 +1165,10 @@ theorem HairyBallDiff : ∃ x ∈ unitSphere n, v x = 0 := by
     refine ⟨hx, this (‖x‖⁻¹ • x) (mem_sphere_zero_iff_norm.2 ?_)⟩
     rw [norm_smul, norm_inv, norm_norm, inv_mul_cancel₀ (norm_ne_zero_iff.2 hx)]
   let v' : E n → E n := fun x => ‖x‖ • ‖v x‖⁻¹ • v x
-  have v'ContDiff : ContDiff ℝ 1 v' := by
-    sorry
+  have v'ContDiff : ContDiffOn ℝ 1 v' {0}ᶜ :=
+    ContDiffOn.smul (fun x hx => (contDiffAt_norm ℝ hx).contDiffWithinAt)
+      (ContDiffOn.smul ((contDiffOn_inv ℝ).comp (ContDiffOn.norm ℝ contDiffOn_v v_ne_zero)
+      fun x hx => norm_ne_zero_iff.2 (v_ne_zero x hx)) contDiffOn_v)
   have hv' : IsExtensionOfVectorFieldOnSn _ v' :=
     ⟨continuous_iff_continuousAt.2 (fun x => by
       by_cases hx : x = 0
@@ -1134,7 +1179,7 @@ theorem HairyBallDiff : ∃ x ∈ unitSphere n, v x = 0 := by
           (Filter.isBoundedUnder_of ⟨1, fun y => ?_⟩)
         rw [Function.comp_apply, norm_smul, norm_inv, norm_norm]
         by_cases hy : y = 0
-        · rw [hy, v_zero _ hv, norm_zero, mul_zero]
+        · rw [hy, v_zero hv, norm_zero, mul_zero]
           exact zero_le_one
         · rw [inv_mul_cancel₀ (norm_ne_zero_iff.2 (v_ne_zero _ hy))]
       · exact ContinuousOn.continuousAt (continuous_norm.continuousOn.smul
@@ -1155,7 +1200,7 @@ theorem HairyBallDiff : ∃ x ∈ unitSphere n, v x = 0 := by
     · rw [hx, norm_smul, norm_zero, norm_zero, zero_mul]
     · rw [norm_smul, norm_smul, norm_inv, norm_norm, norm_norm,
         inv_mul_cancel₀ (norm_ne_zero_iff.2 (v_ne_zero _ hx)), mul_one]
-  exact @contradiction _ hn odd_n _ hv' v'ContDiff v'Unit
+  exact @contradiction _ hn odd_n _ hv' v'Unit v'ContDiff
 
 end
 
@@ -1163,7 +1208,79 @@ end
 
 section
 
-variable (v : E n → E n) (hv : IsExtensionOfVectorFieldOnSn n v) (odd_n : Odd n)
+open MvPolynomial
+
+variable {σ : Type*} {R : Type*}
+
+namespace MvPolynomial
+
+variable [CommSemiring R] [TopologicalSpace R] [TopologicalSemiring R]
+
+@[simps]
+def toContinuousMap (p : MvPolynomial σ R) : C(σ → R, R) :=
+  ⟨fun x => eval x p, by continuity⟩
+
+@[simps]
+def toContinuousMapOn (p : MvPolynomial σ R) (X : Set (σ → R)) : C(X, R) :=
+  ⟨fun x => p.toContinuousMap x, by fun_prop⟩
+
+@[simps]
+def toContinuousMapAlgHom : MvPolynomial σ R →ₐ[R] C(σ → R, R) where
+  toFun p := p.toContinuousMap
+  map_zero' := by ext; simp
+  map_add' _ _ := by ext; simp
+  map_one' := by ext; simp
+  map_mul' _ _ := by ext; simp
+  commutes' _ := by ext; simp
+
+@[simps]
+def toContinuousMapOnAlgHom (X : Set (σ → R)): MvPolynomial σ R →ₐ[R] C(X, R) where
+  toFun p := p.toContinuousMapOn X
+  map_zero' := by ext; simp
+  map_add' _ _ := by ext; simp
+  map_one' := by ext; simp
+  map_mul' _ _ := by ext; simp
+  commutes' _ := by ext; simp
+
+end MvPolynomial
+
+section
+
+variable [CommSemiring R] [TopologicalSpace R] [TopologicalSemiring R]
+
+noncomputable def mvPolynomialFunctions (X : Set (σ → R)) : Subalgebra R C(X, R) :=
+  (⊤ : Subalgebra R (MvPolynomial σ R)).map (MvPolynomial.toContinuousMapOnAlgHom X)
+
+theorem mvPolynomialFunctions_separatesPoints (X : Set (σ → R)) :
+    (mvPolynomialFunctions X).SeparatesPoints := by
+  intro x y h
+  obtain ⟨s, hs⟩ := Classical.exists_not_of_not_forall
+    (not_imp_not.mpr funext_iff.mpr (Subtype.coe_ne_coe.mpr h))
+  exact ⟨_, ⟨_, ⟨MvPolynomial.X s, ⟨Algebra.mem_top, rfl⟩⟩, rfl⟩, by simp [hs]⟩
+
+theorem mvPolynomialFunctions.topologicalClosure (X : Set (σ → ℝ)) [CompactSpace X] :
+    (mvPolynomialFunctions X).topologicalClosure = ⊤ :=
+  ContinuousMap.subalgebra_topologicalClosure_eq_top_of_separatesPoints _
+    (mvPolynomialFunctions_separatesPoints X)
+
+theorem mvPolynomialFunctions.starClosure_topologicalClosure {𝕜 : Type*} [RCLike 𝕜]
+    (X : Set (σ → 𝕜)) [CompactSpace X] :
+    (mvPolynomialFunctions X).starClosure.topologicalClosure = ⊤ :=
+  ContinuousMap.starSubalgebra_topologicalClosure_eq_top_of_separatesPoints _
+    (Subalgebra.separatesPoints_monotone le_sup_left (mvPolynomialFunctions_separatesPoints X))
+
+end
+
+end
+
+
+
+section
+
+variable (odd_n : Odd n) {v : unitSphere n → E n} (isContinuous_v : Continuous v)
+  (isTang_v : ∀ x : unitSphere n, ⟪(x : E n), v x⟫ = 0)
+
+
 
 theorem HairyBallTheorem : ∃ x, v x = 0 := by
   sorry

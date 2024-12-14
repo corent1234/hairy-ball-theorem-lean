@@ -1253,21 +1253,133 @@ end
 
 
 
+/-
+section
+
+lemma test {M₂ : Type} [TopologicalSpace M₂] [AddCommMonoid M₂]
+    {R₁ : Type} [TopologicalSpace R₁] [Semiring R₁] [TopologicalSemiring R₁]
+    [Module R₁ M₂] [ContinuousSMul R₁ M₂] [DistribMulAction R₁ M₂] [SMulCommClass R₁ R₁ M₂] [ContinuousConstSMul R₁ M₂]
+    (c : R₁) (g : M₂ →L[R₁] R₁) :
+    (ContinuousLinearMap.smulRight (1 : R₁ →L[R₁] R₁) c).comp g = c • g := by
+  ext x
+  simp [mul_comm]
+
+end
+-/
+
+
+
 section
 
 universe u v w
 
 open MvPolynomial
 
-variable {σ : Type u}
-variable {𝕜 : Type v} [NontriviallyNormedField 𝕜]
+variable {ι : Type} [Fintype ι] [DecidableEq ι]
+variable {𝕜 : Type} [NontriviallyNormedField 𝕜]
+variable {x : ι → 𝕜}
 
 namespace MvPolynomial
 
-variable (p : MvPolynomial σ 𝕜)
+variable (p : MvPolynomial ι 𝕜)
 
--- protected theorem hasStrictDerivAt (x : σ → 𝕜) :
---    HasStrictDerivAt (fun x => eval x p) x (fun x i => MvPolynomial.pderiv i p)
+omit [DecidableEq ι] in
+lemma prod_pow_support (u : ι →₀ ℕ) (x : ι → 𝕜) :
+    ∏ i : ι, x i ^ u i = ∏ i ∈ u.support, x i ^ u i := by
+  rw [Finset.prod_subset u.support.subset_univ (fun i _ hi => ?_)]
+  rw [Finsupp.not_mem_support_iff.1 hi, pow_zero]
+
+omit [DecidableEq ι] in
+lemma sum_smul_support {R M : Type} [AddCommMonoid M] [Semiring R] [Module R M]
+    (u : ι →₀ R) (g : ι → M) :
+    ∑ i : ι, u i • g i = ∑ i ∈ u.support, u i • g i := by
+  rw [Finset.sum_subset u.support.subset_univ (fun i _ hi => ?_)]
+  rw [Finsupp.not_mem_support_iff.1 hi, zero_smul]
+
+theorem hasStrictFDerivAt_monomial {u : ι →₀ ℕ} :
+    HasStrictFDerivAt (𝕜 := 𝕜) (fun x => ∏ i : ι, x i ^ u i)
+    (∑ i ∈ u.support, (∏ j ∈ u.support.erase i, x j ^ u j) • u i • x i ^ (u i - 1)
+    • ContinuousLinearMap.proj i) x := by
+  rw [funext (prod_pow_support u)]
+  refine HasStrictFDerivAt.finset_prod (fun i _ => ?_)
+  have : (u i • x i ^ (u i - 1) • ContinuousLinearMap.proj (R := 𝕜) (φ := fun _ => 𝕜) i) =
+      (ContinuousLinearMap.smulRight (1 : 𝕜 →L[𝕜] 𝕜) (u i * x i ^ (u i - 1))).comp (ContinuousLinearMap.proj i) := by
+    ext x
+    simp [mul_comm, mul_assoc]
+  rw [this]
+  exact HasStrictFDerivAt.comp x (hasStrictDerivAt_pow (u i) (x i)).hasStrictFDerivAt
+    (hasStrictFDerivAt_apply i x)
+
+theorem hasStrictFDerivAt_monomial' {u : ι →₀ ℕ} :
+    HasStrictFDerivAt (𝕜 := 𝕜) (fun x => ∏ i : ι, x i ^ u i)
+    (∑ i ∈ u.support, (∏ j ∈ u.support.erase i, x j ^ u j)
+    • (ContinuousLinearMap.smulRight (1 : 𝕜 →L[𝕜] 𝕜) (u i * x i ^ (u i - 1))).comp
+    (ContinuousLinearMap.proj i)) x := by
+  rw [funext (prod_pow_support u)]
+  exact HasStrictFDerivAt.finset_prod (fun i _ => HasStrictFDerivAt.comp x
+    (hasStrictDerivAt_pow (u i) (x i)).hasStrictFDerivAt (hasStrictFDerivAt_apply i x))
+
+theorem hasStrictFDerivAt_monomial'' {u : ι →₀ ℕ} :
+    HasStrictFDerivAt (𝕜 := 𝕜) (fun x => ∏ i ∈ u.support, x i ^ u i)
+    (∑ i ∈ u.support, (∏ j ∈ u.support.erase i, x j ^ u j)
+    • (ContinuousLinearMap.smulRight (1 : 𝕜 →L[𝕜] 𝕜) (u i * x i ^ (u i - 1))).comp
+    (ContinuousLinearMap.proj i)) x :=
+  HasStrictFDerivAt.finset_prod (fun i _ => HasStrictFDerivAt.comp x
+    (hasStrictDerivAt_pow (u i) (x i)).hasStrictFDerivAt (hasStrictFDerivAt_apply i x))
+
+lemma prod_sub_single_eq_prod_erase_mul {u : ι →₀ ℕ} {i : ι} (hi : i ∈ u.support) :
+    ∏ j : ι, x j ^ (u j - Finsupp.single i 1 j)
+    = (∏ j ∈ u.support.erase i, x j ^ u j) * x i ^ (u i - 1) := by
+  rw [← Finset.prod_subset u.support.subset_univ (fun j _ hj => ?_),
+    ← Finset.prod_erase_mul _ _ hi, Finsupp.single_apply, if_pos rfl,
+    Finset.prod_congr rfl (fun j hj => ?_)]
+  rw [Finsupp.single_apply, if_neg (Finset.ne_of_mem_erase hj).symm, tsub_zero]
+  rw [Finsupp.single_apply, if_neg (fun h => hj (by rwa [← h])), tsub_zero,
+    Finsupp.not_mem_support_iff.1 hj, pow_zero]
+
+theorem hasStrictFDerivAt_monomial''' {u : ι →₀ ℕ} :
+    HasStrictFDerivAt (𝕜 := 𝕜) (fun x => ∏ i : ι, x i ^ u i)
+    (∑ i : ι, u i • (∏ j : ι, x j ^ (u j - (Finsupp.single i 1) j))
+    • (ContinuousLinearMap.proj i)) x := by
+  rw [sum_smul_support u _, Finset.sum_congr rfl (fun i hi =>
+    by rw [prod_sub_single_eq_prod_erase_mul hi, smul_comm, mul_smul, ← smul_comm (u i)])]
+  exact hasStrictFDerivAt_monomial
+
+protected theorem hasStrictFDerivAt :
+    HasStrictFDerivAt (𝕜 := 𝕜) (fun x => eval x p)
+    (∑ i : ι, (eval x (pderiv i p)) • (ContinuousLinearMap.proj i)) x := by
+  induction p using MvPolynomial.induction_on' with
+  | h1 u a => simp only [eval_monomial, Finsupp.prod_pow, pderiv_monomial, Finsupp.coe_tsub,
+                Pi.sub_apply, mul_smul, ← Finset.smul_sum]
+              apply HasStrictFDerivAt.const_mul
+              rw [Finset.sum_congr rfl (fun i _ => Nat.cast_smul_eq_nsmul _ _ _)]
+              exact hasStrictFDerivAt_monomial'''
+  | h2 p q hp hq => simp only [map_add]
+                    rw [Finset.sum_congr rfl (fun i _ => add_smul _ _ _), Finset.sum_add_distrib]
+                    exact hp.add hq
+
+protected theorem hasFDerivAt  :
+    HasFDerivAt (𝕜 := 𝕜) (fun x => eval x p)
+    (∑ i : ι, (eval x (pderiv i p)) • (ContinuousLinearMap.proj i)) x :=
+  p.hasStrictFDerivAt.hasFDerivAt
+
+protected theorem differentiableAt :
+    DifferentiableAt 𝕜 (fun x => eval x p) x :=
+  p.hasStrictFDerivAt.differentiableAt
+
+protected theorem differentiable : Differentiable 𝕜 (fun x => eval x p) :=
+  fun _ => p.differentiableAt
+
+@[simp]
+protected theorem fderiv : fderiv 𝕜 (fun x => eval x p) x
+    = ∑ i : ι, (eval x (pderiv i p)) • (ContinuousLinearMap.proj i) :=
+  p.hasFDerivAt.fderiv
+
+lemma contDiff_one : ContDiff 𝕜 1 (fun x => eval x p) := by
+  refine contDiff_one_iff_fderiv.2 ⟨p.differentiable, ?_⟩
+  show Continuous (fun x => fderiv 𝕜 (fun x => eval x p) x)
+  rw [funext (fun x => p.fderiv)]
+  continuity
 
 end MvPolynomial
 
@@ -1298,10 +1410,6 @@ lemma contDiff_proj {v : E n → E n} (hv : ContDiff ℝ 1 v) :
     ContDiff ℝ 1 (fun x => v x - ⟪v x, x⟫ • x) :=
   hv.sub (ContDiff.smul ((hv.inner ℝ) contDiff_id) contDiff_id)
 
-lemma test' (v' : unitSphere n → E n) : ∀ x : unitSphere n,
-    ⟪(x : E n), v x - ⟪(x : E n), v x⟫ • x⟫ = 0 := by
-  sorry
-
 include hn odd_n continuous_v isTang_v in
 lemma exists_near_v_vanishing (ε : ℝ) (hε : 0 < ε) : ∃ v' : unitSphere n → E n,
     (∀ x, ‖v' x - v x‖ < ε) ∧ (∃ x, v' x = 0) := by
@@ -1326,45 +1434,33 @@ lemma exists_near_v_vanishing (ε : ℝ) (hε : 0 < ε) : ∃ v' : unitSphere n 
       exact ⟨⟨x, hx⟩, hx'⟩
     apply hairy_ball_diff hn odd_n
     refine contDiff_proj (contDiff_euclidean.2 (fun i => ?_))
-    sorry
-    sorry
+    exact (p i).contDiff_one.comp
+      (ContinuousLinearEquiv.contDiff (EuclideanSpace.equiv (Fin n) ℝ))
+    intro x
+    rw [inner_sub_left, real_inner_smul_left, inner_self_eq_norm_sq_to_K,
+      mem_sphere_zero_iff_norm.1 x.2]
+    simp
+
 
 variable (n)
 
-include continuous_v in
+include hn odd_n continuous_v isTang_v in
 theorem hairy_ball : ∃ x, v x = 0 := by
-  classical
-  have : ∀ x : E n, x ≠ 0 → ‖‖x‖⁻¹ • x‖ = 1 := by
-    intro x hx
-    rw [norm_smul, norm_inv, norm_norm, inv_mul_cancel₀ (norm_ne_zero_iff.2 hx)]
-  let v' : E n → E n := fun x => if hx : x ∈ {0}
-    then 0 else v ⟨‖x‖⁻¹ • x, mem_sphere_zero_iff_norm.2 (this x (Set.not_mem_singleton_iff.1 hx))⟩
-  have continuous_v' : Continuous v' := by
-    apply continuous_iff_continuousAt.2
-    intro x
-    by_cases hx : x = 0
-    · refine continuousAt_of_tendsto_nhds (y := 0) ?_
-      sorry
-    · refine ContinuousOn.continuousAt (continuousOn_iff_continuous_restrict.2 ?_)
-        (compl_singleton_mem_nhds hx)
-      rw [Set.restrict_dite_compl (s := {0})]
-      refine continuous_v.comp (Continuous.subtype_mk
-        (Continuous.smul ?_ continuous_subtype_val)
-        (fun ⟨x, hx⟩ => (mem_sphere_zero_iff_norm.2 (this _ hx))))
-      exact (continuous_norm.comp continuous_subtype_val).inv₀ (fun y => norm_ne_zero_iff.2 y.2)
-  have inst : CompactSpace (unitSphere n) :=
-    Metric.sphere.compactSpace _ _
-  have : ∀ ε > 0, ∃ v'' : unitSphere n → E n,
-      (∀ x, ‖v'' x - v x‖ < ε) ∧ (∃ x, v'' x = 0) := by
-    intro ε hε
-    choose p hp using (fun i => exists_mvPolynomial_near_of_continuous _ _
-      ((continuous_apply i).comp continuous_v) ε hε)
-    let q : unitSphere n → E n := fun x i => MvPolynomial.eval x (p i)
-    use (fun (x : unitSphere n) => (q x - ⟪(x : E n), q x⟫ • x))
-    constructor
-    · intro x
-      sorry
-    sorry
-  sorry
+  by_contra!
+  let g : C(unitSphere n, ℝ) := ⟨fun x => ‖v x‖⁻¹,
+    (continuous_norm.comp continuous_v).inv₀ (fun x => norm_ne_zero_iff.2 (this x))⟩
+  have g_pos : 0 < ‖g‖ := by
+    have _ : Nontrivial (E n) := instNontrivialE odd_n.pos
+    obtain ⟨x, hx⟩ := (NormedSpace.sphere_nonempty (E := E n)).2 zero_le_one
+    refine norm_pos_iff.2 (fun h => this ⟨x, hx⟩ (norm_eq_zero.1 (inv_eq_zero.1 ?_)))
+    show g ⟨x, hx⟩ = 0
+    simp [h]
+  obtain ⟨v', hv', x, x0⟩ := exists_near_v_vanishing hn odd_n continuous_v isTang_v ‖g‖⁻¹
+    (inv_pos.2 g_pos)
+  apply (hv' x).not_le
+  rw [x0, zero_sub, norm_neg, inv_le_comm₀ g_pos (norm_pos_iff.2 (this x)),
+    ← norm_norm, ← norm_inv]
+  exact g.norm_coe_le_norm x
+
 
 end

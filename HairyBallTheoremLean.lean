@@ -329,14 +329,6 @@ lemma lintegral_abs_det_f't : ∀ᶠ t in 𝓝 0,
   exact lintegral_abs_det_fderiv_eq_addHaar_image volume
     (meas_A AComp) (ftDeriv hs vContDiff t) hinj
 
-/- include AComp vContDiff hv in
-lemma ft_volume_withDensity_abs_det_f't_eq_volume : ∀ᶠ t in 𝓝 0,
-    Measure.map (f t) ((volume.restrict A).withDensity fun x => ENNReal.ofReal |(f' t x).det|)
-    = volume.restrict ((f t) '' A) := by
-  filter_upwards [@injOn_A_ft n v A] with t hinj
-  exact map_withDensity_abs_det_fderiv_eq_addHaar volume
-    (meas_A n AComp) (@ftDeriv n v vContDiff A t) hinj (measurable_ft n hv t) -/
-
 open Polynomial
 open Finset
 open Matrix
@@ -860,7 +852,6 @@ lemma image_ft_eq_sphere : ∀ᶠ t in 𝓝 0,
   have := instNontrivialE (one_pos.trans hn)
   apply ((NormedSpace.sphere_nonempty).2 (zero_le_one)).image
 
--- use group actions ? image_smul_set...
 include hn hv vContDiff vUnit s_isOpen hs_crown in
 lemma image_ft_sphere_eq_sphere : ∀ᶠ t in 𝓝 0, ∀ r > 0,
     (f t) '' (Metric.sphere 0 r) = Metric.sphere 0 (r * Real.sqrt (1 + t * t)) := by
@@ -1253,25 +1244,7 @@ end
 
 
 
-/-
 section
-
-lemma test {M₂ : Type} [TopologicalSpace M₂] [AddCommMonoid M₂]
-    {R₁ : Type} [TopologicalSpace R₁] [Semiring R₁] [TopologicalSemiring R₁]
-    [Module R₁ M₂] [ContinuousSMul R₁ M₂] [DistribMulAction R₁ M₂] [SMulCommClass R₁ R₁ M₂] [ContinuousConstSMul R₁ M₂]
-    (c : R₁) (g : M₂ →L[R₁] R₁) :
-    (ContinuousLinearMap.smulRight (1 : R₁ →L[R₁] R₁) c).comp g = c • g := by
-  ext x
-  simp [mul_comm]
-
-end
--/
-
-
-
-section
-
-universe u v w
 
 open MvPolynomial
 
@@ -1352,10 +1325,10 @@ protected theorem hasStrictFDerivAt :
   | h1 u a => simp only [eval_monomial, Finsupp.prod_pow, pderiv_monomial, Finsupp.coe_tsub,
                 Pi.sub_apply, mul_smul, ← Finset.smul_sum]
               apply HasStrictFDerivAt.const_mul
-              rw [Finset.sum_congr rfl (fun i _ => Nat.cast_smul_eq_nsmul _ _ _)]
+              rw [Finset.sum_congr rfl (fun _ _ => Nat.cast_smul_eq_nsmul _ _ _)]
               exact hasStrictFDerivAt_monomial'''
   | h2 p q hp hq => simp only [map_add]
-                    rw [Finset.sum_congr rfl (fun i _ => add_smul _ _ _), Finset.sum_add_distrib]
+                    rw [Finset.sum_congr rfl (fun _ _ => add_smul _ _ _), Finset.sum_add_distrib]
                     exact hp.add hq
 
 protected theorem hasFDerivAt  :
